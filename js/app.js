@@ -6440,11 +6440,21 @@ function saveWeightAdjustments() {}
         }
 
 // ========================================
-// CLOUD SYNC — JSONBin.io
+// CLOUD SYNC — Firebase Realtime Database
 // ========================================
 
-const JSONBIN_API_KEY = '$2a$10$/U1aAgC.GO4kgdYusn7dzeyTPtT83Ijpv3mSg/1HbhEsI2Gyd63Si';
-const JSONBIN_BASE    = 'https://api.jsonbin.io/v3/b';
+const firebaseConfig = {
+    apiKey: "AIzaSyDkdT8zwe1O5NKqbQTmRfMJU0HPtac5Dps",
+    authDomain: "lifescore-f6445.firebaseapp.com",
+    databaseURL: "https://lifescore-f6445-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "lifescore-f6445",
+    storageBucket: "lifescore-f6445.firebasestorage.app",
+    messagingSenderId: "700922981273",
+    appId: "1:700922981273:web:0533963f5fcf2dd17a0108"
+};
+
+const DB_PATH = 'users/default/data';
+
 const SYNC_KEYS = [
     'lifescore_habits_v4',
     'lifescore_habit_logs_v4',
@@ -6465,31 +6475,34 @@ const SYNC_KEYS = [
     'lifescore_daily_session_overrides_v4',
 ];
 
+let _db = null;
 let _cloudSyncTimer = null;
 let _isSyncing = false;
 let _suppressSync = false;
+let _realtimeListenerActive = false;
 
-function getBinId() { return localStorage.getItem('lifescore_jsonbin_id_v4'); }
-function setBinId(id) { localStorage.setItem('lifescore_jsonbin_id_v4', id); }
+function getDb() {
+    if (!_db) {
+        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        _db = firebase.database();
+    }
+    return _db;
+}
 
 function setSyncStatus(status) {
     const el = document.getElementById('syncStatusIndicator');
-    const btn = document.getElementById('syncHeaderBtn');
     const map = {
-        syncing: { text: '⟳ Syncing…', color: '#f59e0b', bg: '#fffbeb', icon: '⟳' },
-        synced:  { text: '✓ Synced',   color: '#10b981', bg: '#ecfdf5', icon: '☁️' },
-        offline: { text: '⚡ Offline', color: '#6b7280', bg: '#f3f4f6', icon: '☁️' },
-        error:   { text: '✗ Sync failed', color: '#ef4444', bg: '#fef2f2', icon: '☁️' },
+        syncing: { text: '⟳ Syncing…',   color: '#f59e0b', bg: '#fffbeb' },
+        synced:  { text: '✓ Synced',      color: '#10b981', bg: '#ecfdf5' },
+        offline: { text: '⚡ Offline',    color: '#6b7280', bg: '#f3f4f6' },
+        error:   { text: '✗ Sync error',  color: '#ef4444', bg: '#fef2f2' },
     };
     const cfg = map[status];
-    if (el && cfg) {
-        el.textContent = cfg.text;
-        el.style.color = cfg.color;
-        el.style.background = cfg.bg;
-        el.style.display = 'block';
-    } else if (el) {
-        el.style.display = 'none';
-    }
+    if (!el || !cfg) return;
+    el.textContent = cfg.text;
+    el.style.color = cfg.color;
+    el.style.background = cfg.bg;
+    el.style.display = 'block';
     if (status === 'synced') {
         setTimeout(() => { if (el) el.style.display = 'none'; }, 3000);
     }
@@ -6518,45 +6531,8 @@ function applyCloudBundle(bundle) {
     _suppressSync = false;
 }
 
-async function createJsonBin() {
-    setSyncStatus('syncing');
-    const bundle = getCloudBundle();
-    // Warn if bundle is over 500KB (JSONBin free limit is 512KB)
-    const bundleSize = new Blob([JSON.stringify(bundle)]).size;
-    console.log(`[Sync] Bundle size: ${(bundleSize/1024).toFixed(1)} KB`);
-    try {
-        const res = await fetch(JSONBIN_BASE, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Master-Key': JSONBIN_API_KEY,
-                'X-Bin-Name': 'LifeScore-Data',
-                'X-Bin-Private': 'true',
-            },
-            body: JSON.stringify(bundle),
-        });
-        if (!res.ok) {
-            const errBody = await res.text().catch(() => '');
-            throw new Error(`HTTP ${res.status}: ${errBody}`);
-        }
-        const data = await res.json();
-        const binId = data.metadata?.id;
-        if (!binId) throw new Error('No bin ID returned');
-        setBinId(binId);
-        localStorage.setItem('lifescore_last_modified_v4', String(bundle.lastModified));
-        setSyncStatus('synced');
-        showBinCreatedModal(binId);
-        return binId;
-    } catch (e) {
-        console.error('[Sync] Create error:', e.message);
-        setSyncStatusError(e.message);
-        return null;
-    }
-}
-
 async function pushToCloud() {
-    const binId = getBinId();
-    if (!binId || _isSyncing) return;
+    if (_isSyncing) return;
     _isSyncing = true;
     setSyncStatus('syncing');
     const ts = Date.now();
@@ -6566,46 +6542,24 @@ async function pushToCloud() {
     const bundle = getCloudBundle();
     bundle.lastModified = ts;
     try {
-        const res = await fetch(`${JSONBIN_BASE}/${binId}`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Master-Key': JSONBIN_API_KEY,
-            },
-            body: JSON.stringify(bundle),
-        });
-        if (!res.ok) {
-            const errBody = await res.text().catch(() => '');
-            throw new Error(`HTTP ${res.status}: ${errBody}`);
-        }
+        await getDb().ref(DB_PATH).set(bundle);
         setSyncStatus('synced');
     } catch (e) {
         console.error('[Sync] Push error:', e.message);
-        setSyncStatusError(e.message);
+        setSyncStatus(navigator.onLine ? 'error' : 'offline');
     } finally {
         _isSyncing = false;
     }
 }
 
 async function pullFromCloud() {
-    const binId = getBinId();
-    if (!binId) return false;
     setSyncStatus('syncing');
     try {
-        const res = await fetch(`${JSONBIN_BASE}/${binId}/latest`, {
-            headers: { 'X-Master-Key': JSONBIN_API_KEY },
-        });
-        if (!res.ok) {
-            const errBody = await res.text().catch(() => '');
-            throw new Error(`HTTP ${res.status}: ${errBody}`);
-        }
-        const data = await res.json();
-        const cloudBundle = data.record;
-        if (!cloudBundle) throw new Error('Empty record');
-
-        const localTs  = parseInt(localStorage.getItem('lifescore_last_modified_v4') || '0', 10);
-        const cloudTs  = cloudBundle.lastModified || 0;
-
+        const snap = await getDb().ref(DB_PATH).once('value');
+        const cloudBundle = snap.val();
+        if (!cloudBundle) { setSyncStatus('synced'); return false; }
+        const localTs = parseInt(localStorage.getItem('lifescore_last_modified_v4') || '0', 10);
+        const cloudTs = cloudBundle.lastModified || 0;
         if (cloudTs > localTs) {
             applyCloudBundle(cloudBundle);
             setSyncStatus('synced');
@@ -6615,31 +6569,13 @@ async function pullFromCloud() {
         return false;
     } catch (e) {
         console.error('[Sync] Pull error:', e.message);
-        setSyncStatusError(e.message);
+        setSyncStatus(navigator.onLine ? 'error' : 'offline');
         return false;
     }
 }
 
-function setSyncStatusError(msg) {
-    const el = document.getElementById('syncStatusIndicator');
-    if (!el) return;
-    // Extract the key part: HTTP 401, 403, network error etc.
-    let friendly = '✗ Sync failed';
-    if (msg.includes('401')) friendly = '✗ Invalid API key (401)';
-    else if (msg.includes('403')) friendly = '✗ Access denied (403)';
-    else if (msg.includes('404')) friendly = '✗ Bin not found (404)';
-    else if (msg.includes('429')) friendly = '✗ Rate limited (429)';
-    else if (msg.includes('413') || msg.includes('payload')) friendly = '✗ Data too large';
-    else if (!navigator.onLine) friendly = '⚡ Offline';
-    el.textContent = friendly;
-    el.style.color = navigator.onLine ? '#ef4444' : '#6b7280';
-    el.style.background = navigator.onLine ? '#fef2f2' : '#f3f4f6';
-    el.style.display = 'block';
-    console.error('[Sync] Full error:', msg);
-}
-
 function scheduleCloudSync() {
-    if (!getBinId() || _suppressSync) return;
+    if (_suppressSync) return;
     if (_cloudSyncTimer) clearTimeout(_cloudSyncTimer);
     _cloudSyncTimer = setTimeout(() => {
         _cloudSyncTimer = null;
@@ -6647,15 +6583,42 @@ function scheduleCloudSync() {
     }, 3000);
 }
 
+function startRealtimeListener() {
+    if (_realtimeListenerActive) return;
+    _realtimeListenerActive = true;
+    getDb().ref(DB_PATH).on('value', snap => {
+        if (_suppressSync || _isSyncing) return;
+        const cloudBundle = snap.val();
+        if (!cloudBundle) return;
+        const localTs = parseInt(localStorage.getItem('lifescore_last_modified_v4') || '0', 10);
+        const cloudTs = cloudBundle.lastModified || 0;
+        if (cloudTs > localTs + 1000) {
+            applyCloudBundle(cloudBundle);
+            loadData();
+            loadIslandData();
+            loadWorldProgress();
+            migrateData();
+            recomputeAllStreaks();
+            checkWorldIslandUnlocks(false);
+            applySettings();
+            renderTabs();
+            updateProjectSelects();
+            renderTodayView();
+            renderHabitLog();
+            if (settings.gamificationEnabled) calculateScores();
+        }
+    }, e => {
+        console.error('[Sync] Listener error:', e.message);
+    });
+}
+
 async function initCloudSync() {
-    // Intercept all localStorage writes to trigger debounced cloud push
     const _origSetItem = Storage.prototype.setItem;
     Storage.prototype.setItem = function(key, value) {
         _origSetItem.call(this, key, value);
         if (this === localStorage &&
             !_suppressSync &&
             key.startsWith('lifescore_') &&
-            key !== 'lifescore_jsonbin_id_v4' &&
             key !== 'lifescore_last_modified_v4' &&
             key !== 'lifescore_current_tab_v4' &&
             key !== 'lifescore_day_cutoff_v4' &&
@@ -6664,13 +6627,6 @@ async function initCloudSync() {
         }
     };
 
-    const binId = getBinId();
-    if (!binId) {
-        showSyncSetupModal();
-        return;
-    }
-
-    // Pull cloud data and reload app if newer
     const updated = await pullFromCloud();
     if (updated) {
         loadData();
@@ -6686,103 +6642,18 @@ async function initCloudSync() {
         renderHabitLog();
         if (settings.gamificationEnabled) calculateScores();
     }
+
+    startRealtimeListener();
 }
 
-// ── Modal helpers ─────────────────────────────────────────────────────────────
-
-function showSyncSetupModal() {
-    document.getElementById('syncSetupModal')?.classList.add('active');
-}
-function closeSyncSetupModal() {
-    document.getElementById('syncSetupModal')?.classList.remove('active');
-}
-
-function showBinCreatedModal(binId) {
-    const modal = document.getElementById('binCreatedModal');
-    if (!modal) return;
-    const el = document.getElementById('binCreatedId');
-    if (el) el.textContent = binId;
-    modal.classList.add('active');
-}
-function closeBinCreatedModal() {
-    document.getElementById('binCreatedModal')?.classList.remove('active');
-}
+// ── Modal helpers ──────────────────────────────────────────────────────────────
 
 function openSyncSettings() {
-    const modal = document.getElementById('syncSettingsModal');
-    if (!modal) return;
-    const binId = getBinId();
-    const content = document.getElementById('syncSettingsContent');
-    const notConf = document.getElementById('syncNotConfigured');
-    const idEl = document.getElementById('syncCurrentBinId');
-    if (binId) {
-        if (content) content.style.display = 'block';
-        if (notConf) notConf.style.display = 'none';
-        if (idEl) idEl.textContent = binId;
-    } else {
-        if (content) content.style.display = 'none';
-        if (notConf) notConf.style.display = 'block';
-    }
-    modal.classList.add('active');
+    document.getElementById('syncSettingsModal')?.classList.add('active');
 }
 function closeSyncSettings() {
     document.getElementById('syncSettingsModal')?.classList.remove('active');
 }
-
-async function syncSetupCreateNew() {
-    closeSyncSetupModal();
-    await createJsonBin();
-}
-
-async function syncSetupEnterExisting() {
-    const input = document.getElementById('existingBinIdInput');
-    const binId = (input?.value || '').trim();
-    if (!binId) { alert('Please enter a Bin ID.'); return; }
-    setBinId(binId);
-    closeSyncSetupModal();
-    setSyncStatus('syncing');
-    const updated = await pullFromCloud();
-    if (updated) {
-        loadData();
-        loadIslandData();
-        loadWorldProgress();
-        migrateData();
-        recomputeAllStreaks();
-        checkWorldIslandUnlocks(false);
-        applySettings();
-        renderTabs();
-        updateProjectSelects();
-        renderTodayView();
-        renderHabitLog();
-        if (settings.gamificationEnabled) calculateScores();
-    }
-}
-
-function switchBinDevice() {
-    closeSyncSettings();
-    const input = document.getElementById('existingBinIdInput');
-    if (input) input.value = '';
-    document.getElementById('syncSetupModal')?.classList.add('active');
-}
-
-function disconnectSync() {
-    if (!confirm('Disconnect cloud sync? Your local data stays. You can reconnect anytime.')) return;
-    _suppressSync = true;
-    localStorage.removeItem('lifescore_jsonbin_id_v4');
-    _suppressSync = false;
-    closeSyncSettings();
-    setSyncStatus('offline');
-    setTimeout(() => { const el = document.getElementById('syncStatusIndicator'); if (el) el.style.display = 'none'; }, 3000);
-}
-
-function copyBinId() {
-    const text = document.getElementById('binCreatedId')?.textContent || getBinId() || '';
-    navigator.clipboard?.writeText(text).then(() => {
-        const btn = document.getElementById('copyBinIdBtn');
-        if (btn) { const orig = btn.textContent; btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = orig; }, 2000); }
-    });
-}
-
 async function syncNow() {
     closeSyncSettings();
     await pushToCloud();
@@ -6823,7 +6694,7 @@ async function syncNow() {
         if (!pulling || !indicator) return;
         pulling = false;
         const dy = e.changedTouches[0].clientY - startY;
-        if (dy > 60 && getBinId()) {
+        if (dy > 60) {
             indicator.textContent = '⟳ Syncing…';
             indicator.style.opacity = '1';
             await pullFromCloud();
@@ -6835,26 +6706,3 @@ async function syncNow() {
     });
 })();
 
-// Paste this in browser console to test connectivity:
-// testJsonBinConnection().then(r => console.log(r))
-async function testJsonBinConnection() {
-    try {
-        const res = await fetch(JSONBIN_BASE, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Master-Key': JSONBIN_API_KEY,
-                'X-Bin-Name': 'LifeScore-Test',
-                'X-Bin-Private': 'true',
-            },
-            body: JSON.stringify({ test: true, ts: Date.now() }),
-        });
-        const body = await res.text();
-        console.log(`[SyncTest] Status: ${res.status}`);
-        console.log(`[SyncTest] Response: ${body}`);
-        return { status: res.status, ok: res.ok, body };
-    } catch (e) {
-        console.error('[SyncTest] Network error:', e.message);
-        return { error: e.message };
-    }
-}

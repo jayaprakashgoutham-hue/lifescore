@@ -1422,68 +1422,17 @@
     </div>
 </div>
 
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
     <script src="js/app.js"></script>
-
-<!-- ===== SYNC SETUP MODAL (first launch) ===== -->
-<div class="modal" id="syncSetupModal">
-    <div class="modal-content" style="max-width:440px;">
-        <h2 style="margin-bottom:8px;">☁️ Cloud Sync Setup</h2>
-        <p style="color:var(--text-secondary); font-size:14px; margin-bottom:20px;">Sync your LifeScore data across devices using a private cloud bin. Your data is stored in your own JSONBin account.</p>
-        <div style="display:grid; gap:12px;">
-            <div style="padding:16px; background:var(--bg-tertiary); border-radius:10px; border:1px solid var(--border-color);">
-                <div style="font-weight:700; margin-bottom:6px;">🆕 New device / Start fresh sync</div>
-                <div style="font-size:13px; color:var(--text-secondary); margin-bottom:12px;">Creates a new cloud bin and uploads your current data. You'll get a Bin ID to use on other devices.</div>
-                <button class="btn-primary" style="width:100%;" onclick="syncSetupCreateNew()">Create Cloud Bin</button>
-            </div>
-            <div style="padding:16px; background:var(--bg-tertiary); border-radius:10px; border:1px solid var(--border-color);">
-                <div style="font-weight:700; margin-bottom:6px;">🔗 Connect to existing bin</div>
-                <div style="font-size:13px; color:var(--text-secondary); margin-bottom:12px;">Already set up on another device? Enter your Bin ID to sync this device.</div>
-                <input id="existingBinIdInput" type="text" placeholder="Paste your Bin ID here..." style="width:100%; box-sizing:border-box; padding:10px 12px; border-radius:8px; border:1px solid var(--border-color); background:var(--bg-primary); color:var(--text-primary); font-size:13px; margin-bottom:10px;">
-                <button class="btn-primary" style="width:100%;" onclick="syncSetupEnterExisting()">Connect & Load Cloud Data</button>
-            </div>
-            <button class="btn-secondary" onclick="closeSyncSetupModal()" style="font-size:13px;">Skip for now (use local storage only)</button>
-        </div>
-    </div>
-</div>
-
-<!-- ===== BIN CREATED MODAL ===== -->
-<div class="modal" id="binCreatedModal">
-    <div class="modal-content" style="max-width:440px;">
-        <h2 style="margin-bottom:8px;">✅ Cloud Sync Active</h2>
-        <p style="color:var(--text-secondary); font-size:14px; margin-bottom:16px;">Your data is now syncing to the cloud. Save your Bin ID — you'll need it to connect other devices.</p>
-        <div style="background:var(--bg-tertiary); border-radius:10px; padding:16px; margin-bottom:16px; border:1px solid var(--border-color);">
-            <div style="font-size:12px; color:var(--text-secondary); margin-bottom:6px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">Your Bin ID</div>
-            <div style="display:flex; align-items:center; gap:10px;">
-                <code id="binCreatedId" style="flex:1; font-size:14px; font-weight:700; color:var(--accent-color); word-break:break-all;"></code>
-                <button id="copyBinIdBtn" class="btn-secondary" style="flex-shrink:0; font-size:12px; padding:6px 12px;" onclick="copyBinId()">Copy</button>
-            </div>
-        </div>
-        <div style="background:#fef3c7; border-radius:8px; padding:12px; font-size:13px; color:#92400e; margin-bottom:16px;">
-            ⚠️ Save this ID somewhere safe. On another device, open LifeScore → ☁️ → "Connect to existing bin" and paste this ID.
-        </div>
-        <button class="btn-primary" style="width:100%;" onclick="closeBinCreatedModal()">Got it!</button>
-    </div>
-</div>
 
 <!-- ===== SYNC SETTINGS MODAL ===== -->
 <div class="modal" id="syncSettingsModal">
     <div class="modal-content" style="max-width:420px;">
-        <h2 style="margin-bottom:16px;">☁️ Cloud Sync</h2>
-        <div id="syncSettingsContent">
-            <div style="padding:14px; background:var(--bg-tertiary); border-radius:10px; margin-bottom:12px; border:1px solid var(--border-color);">
-                <div style="font-size:12px; color:var(--text-secondary); margin-bottom:4px;">Current Bin ID</div>
-                <code id="syncCurrentBinId" style="font-size:13px; word-break:break-all; color:var(--accent-color);"></code>
-            </div>
-            <div style="display:grid; gap:10px;">
-                <button class="btn-primary" onclick="syncNow()" style="width:100%;">⟳ Sync Now</button>
-                <button class="btn-secondary" onclick="showBinCreatedModal(getBinId())" style="width:100%;">🔑 View / Copy my Bin ID</button>
-                <button class="btn-secondary" onclick="switchBinDevice()" style="width:100%;">🔗 Connect to different bin</button>
-                <button class="btn-secondary" onclick="disconnectSync()" style="width:100%; color:#ef4444; border-color:#ef444430;">✕ Disconnect cloud sync</button>
-            </div>
-        </div>
-        <div id="syncNotConfigured" style="display:none; text-align:center; padding:8px 0;">
-            <p style="color:var(--text-secondary); margin-bottom:16px;">Cloud sync is not configured.</p>
-            <button class="btn-primary" style="width:100%;" onclick="closeSyncSettings(); showSyncSetupModal();">Set Up Cloud Sync</button>
+        <h2 style="margin-bottom:12px;">☁️ Cloud Sync</h2>
+        <p style="color:var(--text-secondary); font-size:14px; margin-bottom:20px;">Your data syncs automatically in real time across all your devices. No setup needed.</p>
+        <div style="display:grid; gap:10px;">
+            <button class="btn-primary" onclick="syncNow()" style="width:100%;">⟳ Sync Now</button>
         </div>
         <button class="btn-secondary" onclick="closeSyncSettings()" style="width:100%; margin-top:12px;">Close</button>
     </div>
