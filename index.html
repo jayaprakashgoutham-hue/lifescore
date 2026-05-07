@@ -475,13 +475,13 @@
 
     <!-- Project Registry Modal -->
     <div class="modal" id="projectRegistryModal">
-        <div class="modal-content" style="max-width:500px;">
+        <div class="modal-content" style="max-width:620px;">
             <div class="modal-header">📁 Project Registry</div>
-            <div style="display:flex; gap:8px; margin-bottom:16px;">
+            <div style="display:flex; gap:10px; margin-bottom:20px;">
                 <input type="text" id="projectRegistryNewName" class="modal-input" placeholder="e.g. TAG Consultancy, Fitness, AI Learning" style="margin-bottom:0; flex:1;" onkeydown="if(event.key==='Enter')addProjectToRegistry()">
-                <button class="btn-primary" onclick="addProjectToRegistry()" style="white-space:nowrap; padding:10px 16px;">+ Add</button>
+                <button class="btn-primary" onclick="addProjectToRegistry()" style="white-space:nowrap; padding:10px 18px;">+ Add</button>
             </div>
-            <div id="projectRegistryList" style="max-height:360px; overflow-y:auto;"></div>
+            <div id="projectRegistryList" style="max-height:400px; overflow-y:auto;"></div>
             <div class="modal-footer">
                 <button class="btn-secondary" onclick="closeProjectRegistry()">Close</button>
             </div>
@@ -676,6 +676,22 @@
                     </div>
                     <div class="setting-control">
                         <input type="time" id="settingDayCutoffTime" value="03:00">
+                    </div>
+                </div>
+            </div>
+            <div class="settings-section">
+                <div class="settings-section-title">Week</div>
+                <div class="setting-item">
+                    <div>
+                        <div class="setting-label">Week starts on</div>
+                        <div class="setting-description">Used for habit log columns and weekly project progress.</div>
+                    </div>
+                    <div class="setting-control">
+                        <select id="settingWeekStartsOn">
+                            <option value="1">Monday</option>
+                            <option value="0">Sunday</option>
+                            <option value="6">Saturday</option>
+                        </select>
                     </div>
                 </div>
             </div>

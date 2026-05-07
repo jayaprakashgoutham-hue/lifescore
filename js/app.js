@@ -277,7 +277,7 @@ let selectedProjectColor = '#1967d2';
             return {
                 appName: parsed.appName || 'LifeScore',
                 theme: parsed.theme || 'light',
-                weekStartsOn: parsed.weekStartsOn !== undefined ? parsed.weekStartsOn : 0,
+                weekStartsOn: parsed.weekStartsOn !== undefined ? parsed.weekStartsOn : 1,
                 dayEndTime: parsed.dayEndTime !== undefined ? parsed.dayEndTime : 3,
                 gamificationEnabled: parsed.gamificationEnabled !== undefined ? parsed.gamificationEnabled : true,
                 scoring: {
@@ -1723,18 +1723,27 @@ function showTodayCalendarDayDetail(dateStr) {
     detail.innerHTML = `<strong>${dayDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</strong><br>Sessions completed: ${daySessions}<br>Habit completion: ${habitPct}%<br>XP: ${calculateDayScore(dateStr).toFixed(1)}`;
 }
 
-function getWeeklyHoursPerProject() {
+function getWeekBoundary() {
     const now = new Date();
-    const dayOfWeek = now.getDay();
-    const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-    const monday = new Date(now);
-    monday.setDate(now.getDate() - daysToMonday);
-    monday.setHours(0, 0, 0, 0);
-    const mondayTs = monday.getTime();
+    const startDay = settings.weekStartsOn !== undefined ? settings.weekStartsOn : 1;
+    const currentDay = now.getDay();
+    const diff = (currentDay - startDay + 7) % 7;
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - diff);
+    weekStart.setHours(0, 0, 0, 0);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+    weekEnd.setHours(23, 59, 59, 999);
+    return { weekStart, weekEnd };
+}
+
+function getWeeklyHoursPerProject() {
+    const { weekStart } = getWeekBoundary();
+    const weekStartTs = weekStart.getTime();
 
     const hoursMap = {};
     sessionLogs.forEach(s => {
-        if (!s.completed || s.startTime < mondayTs) return;
+        if (!s.completed || s.startTime < weekStartTs) return;
         const hrs = (s.endTime - s.startTime) / 3600000;
         hoursMap[s.projectId] = (hoursMap[s.projectId] || 0) + hrs;
     });
@@ -1789,9 +1798,16 @@ function renderWeeklyProjectProgress() {
             </div>`;
     }).join('');
 
+    const { weekStart, weekEnd } = getWeekBoundary();
+    const fmt = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const weekLabel = `Week of ${fmt(weekStart)} – ${fmt(weekEnd)}, ${weekEnd.getFullYear()}`;
+
     el.style.display = 'block';
     el.innerHTML = `
-        <div style="font-weight:700; font-size:14px; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--border-color);">Weekly Project Progress</div>
+        <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--border-color);">
+            <span style="font-weight:700; font-size:14px;">Weekly Project Progress</span>
+            <span style="font-size:12px; color:var(--text-secondary);">${weekLabel}</span>
+        </div>
         ${rows}`;
 }
 
@@ -5096,6 +5112,8 @@ function renderScoringBreakdown(dateStr) {
             }
             document.getElementById('settingSessionEndSound').value = sessionEndSound || 'bellChime';
             document.getElementById('settingDayCutoffTime').value = dayCutoffTime || '03:00';
+            const weekStartEl = document.getElementById('settingWeekStartsOn');
+            if (weekStartEl) weekStartEl.value = String(settings.weekStartsOn !== undefined ? settings.weekStartsOn : 1);
             document.getElementById('settingsModal').classList.add('active');
         }
 
@@ -5138,6 +5156,8 @@ function renderScoringBreakdown(dateStr) {
     }
     sessionEndSound = document.getElementById('settingSessionEndSound')?.value || 'bellChime';
     dayCutoffTime = document.getElementById('settingDayCutoffTime')?.value || '03:00';
+    const weekStartVal = parseInt(document.getElementById('settingWeekStartsOn')?.value);
+    settings.weekStartsOn = isNaN(weekStartVal) ? 1 : weekStartVal;
 
     localStorage.setItem('lifescore_settings_v4', JSON.stringify(settings));
     localStorage.setItem('lifescore_weekly_sessions_v4', JSON.stringify(weeklySessionTargets));
@@ -5994,16 +6014,18 @@ function saveWeightAdjustments() {}
                 return;
             }
             list.innerHTML = projects.map(p => `
-                <div style="display:flex; align-items:center; gap:8px; padding:10px 0; border-bottom:1px solid var(--border-color); flex-wrap:wrap;" id="proj-row-${p.id}">
-                    <span style="flex:1; font-size:15px; min-width:80px;" id="proj-name-${p.id}">${escapeHtml(p.name)}</span>
-                    <input type="text" class="modal-input" id="proj-edit-${p.id}" value="${escapeHtml(p.name)}" style="display:none; flex:1; min-width:80px; padding:6px 10px; font-size:14px; margin-bottom:0;" onkeydown="if(event.key==='Enter')saveProjectEdit(${p.id})">
-                    <div style="display:flex; align-items:center; gap:4px; flex-shrink:0;">
-                        <input type="number" min="0" max="168" step="0.5" id="proj-target-${p.id}" value="${p.weeklyTargetHours || ''}" placeholder="—" style="width:56px; padding:4px 6px; font-size:13px; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-tertiary); color:var(--text-primary); text-align:center;" onchange="updateProjectTarget(${p.id}, this.value)" title="Weekly target hours">
-                        <span style="font-size:11px; color:var(--text-secondary); white-space:nowrap;">hrs/wk</span>
+                <div style="display:flex; align-items:center; gap:12px; padding:14px 4px; border-bottom:1px solid var(--border-color); flex-wrap:wrap;" id="proj-row-${p.id}">
+                    <span style="flex:1; font-size:15px; font-weight:500; min-width:100px;" id="proj-name-${p.id}">${escapeHtml(p.name)}</span>
+                    <input type="text" class="modal-input" id="proj-edit-${p.id}" value="${escapeHtml(p.name)}" style="display:none; flex:1; min-width:100px; padding:6px 10px; font-size:14px; margin-bottom:0;" onkeydown="if(event.key==='Enter')saveProjectEdit(${p.id})">
+                    <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+                        <input type="number" min="0" max="168" step="0.5" id="proj-target-${p.id}" value="${p.weeklyTargetHours || ''}" placeholder="—" style="width:60px; padding:5px 8px; font-size:13px; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-tertiary); color:var(--text-primary); text-align:center;" onchange="updateProjectTarget(${p.id}, this.value)" title="Weekly target hours">
+                        <span style="font-size:12px; color:var(--text-secondary); white-space:nowrap;">hrs/wk</span>
                     </div>
-                    <button class="btn-secondary" style="padding:4px 10px; font-size:12px;" id="proj-edit-btn-${p.id}" onclick="startEditProject(${p.id})">Edit</button>
-                    <button class="btn-primary" style="padding:4px 10px; font-size:12px; display:none;" id="proj-save-btn-${p.id}" onclick="saveProjectEdit(${p.id})">Save</button>
-                    <button class="btn-danger" style="padding:4px 10px; font-size:12px;" onclick="deleteProjectFromRegistry(${p.id})">Delete</button>
+                    <div style="display:flex; gap:8px; flex-shrink:0;">
+                        <button class="btn-secondary" style="padding:6px 14px; font-size:13px;" id="proj-edit-btn-${p.id}" onclick="startEditProject(${p.id})">Edit</button>
+                        <button class="btn-primary" style="padding:6px 14px; font-size:13px; display:none;" id="proj-save-btn-${p.id}" onclick="saveProjectEdit(${p.id})">Save</button>
+                        <button class="btn-danger" style="padding:6px 14px; font-size:13px;" onclick="deleteProjectFromRegistry(${p.id})">Delete</button>
+                    </div>
                 </div>`).join('');
         }
         function addProjectToRegistry() {
