@@ -6022,8 +6022,9 @@ function saveWeightAdjustments() {}
                     <span style="flex:1; font-size:15px; font-weight:500; min-width:100px;" id="proj-name-${p.id}">${escapeHtml(p.name)}</span>
                     <input type="text" class="modal-input" id="proj-edit-${p.id}" value="${escapeHtml(p.name)}" style="display:none; flex:1; min-width:100px; padding:6px 10px; font-size:14px; margin-bottom:0;" onkeydown="if(event.key==='Enter')saveProjectEdit(${p.id})">
                     <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
-                        <input type="number" min="0" max="168" step="0.5" id="proj-target-${p.id}" value="${p.weeklyTargetHours || ''}" placeholder="—" style="width:60px; padding:5px 8px; font-size:13px; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-tertiary); color:var(--text-primary); text-align:center;" onchange="updateProjectTarget(${p.id}, this.value)" title="Weekly target hours">
+                        <input type="number" min="0" max="168" step="0.5" id="proj-target-${p.id}" value="${p.weeklyTargetHours || ''}" placeholder="—" style="width:60px; padding:5px 8px; font-size:13px; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-tertiary); color:var(--text-primary); text-align:center;" onkeydown="if(event.key==='Enter'){saveProjectTarget(${p.id});event.preventDefault();}" onblur="saveProjectTarget(${p.id})" title="Weekly target hours (hrs/week)">
                         <span style="font-size:12px; color:var(--text-secondary); white-space:nowrap;">hrs/wk</span>
+                        <button onclick="saveProjectTarget(${p.id})" id="proj-target-save-${p.id}" style="padding:4px 10px; font-size:12px; background:var(--bg-tertiary); border:1px solid var(--border-color); border-radius:6px; cursor:pointer; color:var(--text-secondary); white-space:nowrap;" title="Save target">Save</button>
                     </div>
                     <div style="display:flex; gap:8px; flex-shrink:0;">
                         <button class="btn-secondary" style="padding:6px 14px; font-size:13px;" id="proj-edit-btn-${p.id}" onclick="startEditProject(${p.id})">Edit</button>
@@ -6078,6 +6079,19 @@ function saveWeightAdjustments() {}
             const hrs = parseFloat(value);
             p.weeklyTargetHours = isNaN(hrs) || hrs <= 0 ? 0 : hrs;
             saveProjects();
+        }
+        function saveProjectTarget(id) {
+            const input = document.getElementById(`proj-target-${id}`);
+            if (!input) return;
+            updateProjectTarget(id, input.value);
+            const btn = document.getElementById(`proj-target-save-${id}`);
+            if (btn) {
+                const prev = btn.textContent;
+                btn.textContent = '✓ Saved';
+                btn.style.color = '#16a34a';
+                btn.style.borderColor = '#16a34a';
+                setTimeout(() => { btn.textContent = prev; btn.style.color = ''; btn.style.borderColor = ''; }, 1500);
+            }
         }
         // ──────────────────────────────────────────────────────────────────
 
