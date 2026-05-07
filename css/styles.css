@@ -1712,6 +1712,7 @@
     position: relative;
     overflow: hidden;
     cursor: default;
+    container-type: inline-size;
     background-image: url('../public/assets/islands/tropical-island/tropical-base.png.png');
     background-size: 100% 100%;
     background-position: center top;
@@ -1796,11 +1797,11 @@
     z-index: 40;
     filter: drop-shadow(0 0 14px rgba(138,180,248,.95));
 }
-.island-item-icon  { font-size: 36px; line-height: 1; display: block; }
-.island-item-img   { width: 70px; height: 70px; object-fit: contain; display: block; pointer-events: none; }
+.island-item-icon  { font-size: clamp(20px, 5.1cqw, 36px); line-height: 1; display: block; }
+.island-item-img   { width: clamp(36px, 10cqw, 70px); height: clamp(36px, 10cqw, 70px); object-fit: contain; display: block; pointer-events: none; }
 .island-shop-img   { width: 32px; height: 32px; object-fit: contain; display: block; flex-shrink: 0; }
 .island-item-label {
-    font-size: 10px;
+    font-size: clamp(8px, 1.45cqw, 10px);
     font-weight: 700;
     color: #fff;
     background: rgba(0,0,0,.56);

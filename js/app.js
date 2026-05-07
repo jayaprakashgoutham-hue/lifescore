@@ -1908,7 +1908,7 @@ function renderWeeklyProjectProgress() {
                 const { weekStart } = getWeekBoundary();
                 value = 0;
                 for (let d = new Date(weekStart); d.getTime() <= Date.now(); d.setDate(d.getDate() + 1)) {
-                    value += habitLogs[habit.id]?.[getLocalDateStr(d, true)]?.value || 0;
+                    value += habitLogs[habit.id]?.[getLocalDateStr(d, false)]?.value || 0;
                 }
             } else {
                 value = log?.value || 0;
