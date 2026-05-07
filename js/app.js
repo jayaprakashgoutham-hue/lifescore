@@ -1270,7 +1270,6 @@ function toggleActiveSessionMinimize() {
     } else if (toolsEl) { toolsEl.innerHTML = ''; }
     notesEl.value = activeSession.notes || '';
     if (!Array.isArray(activeSession.activeTasks)) activeSession.activeTasks = [];
-    renderActiveSessionTaskList();
     if (activeSession.stopwatch) {
         updateActiveSessionTimerDisplay(Date.now() - activeSession.startTime, true);
     } else {
@@ -1439,27 +1438,6 @@ function toggleActiveSessionMinimize() {
         calculateScores();
         renderSessionAnalytics();
     }
-}
-
-        function renderActiveSessionTaskList() {
-    const listEl = document.getElementById('activeSessionTaskList');
-    if (!listEl || !activeSession) return;
-
-    const projectTasks = tasks.filter(task => task.project === activeSession.projectId && !task.completed);
-    if (projectTasks.length === 0) {
-        listEl.innerHTML = '<div style="font-size: 12px; color: var(--text-secondary);">No tasks in this project.</div>';
-        return;
-    }
-
-    listEl.innerHTML = projectTasks.map(task => {
-        const checked = activeSession.tasksCompleted.includes(task.id) || task.completed;
-        return `
-            <label style="display: flex; gap: 8px; align-items: flex-start; padding: 6px 8px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-primary);">
-                <input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleTaskFromActiveSession(${task.id}, this.checked)">
-                <span style="font-size: 13px; ${checked ? 'text-decoration: line-through; opacity: 0.7;' : ''}">${escapeHtml(task.text)}</span>
-            </label>
-        `;
-    }).join('');
 }
 
         function toggleTaskFromActiveSession(taskId, checked) {
@@ -1780,8 +1758,14 @@ function showTodayCalendarDayDetail(dateStr) {
                 const stateInfo = getHabitCardState(h, dateStr, displayDate);
                 return { ...h, stateInfo };
             }).sort((a, b) => {
-                const stateOrder = s => (s === 'done' || s === 'failed') ? 1 : 0;
-                return stateOrder(getHabitLogState(habitLogs[a.id]?.[dateStr])) - stateOrder(getHabitLogState(habitLogs[b.id]?.[dateStr]));
+                const isDoneToday = h => {
+                    const log = habitLogs[h.id]?.[dateStr];
+                    const state = getHabitLogState(log);
+                    if (state === 'done' || state === 'failed') return true;
+                    if ((h.period === 'weekly' || h.period === 'monthly') && (log?.value || 0) > 0) return true;
+                    return false;
+                };
+                return (isDoneToday(a) ? 1 : 0) - (isDoneToday(b) ? 1 : 0);
             });
 
             document.getElementById('todayHabitsCount').textContent = `${todayHabits.length} habit${todayHabits.length !== 1 ? 's' : ''}`;
@@ -1798,7 +1782,6 @@ function showTodayCalendarDayDetail(dateStr) {
             if (xpEl) xpEl.textContent = todayXP.toFixed(1);
             const focusXpEl = document.getElementById('todayFocusXp');
             if (focusXpEl) focusXpEl.textContent = todayXP.toFixed(1);
-            updateGemDisplay();
             refreshTotalXPDisplay();
         }
 

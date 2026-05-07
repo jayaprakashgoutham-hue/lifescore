@@ -32,17 +32,8 @@
                 <span id="levelBadgeText">Lv.1</span>
                 <span id="islandBadgeText">Sandy Shores 🌴</span>
             </div>
-            <span id="totalXpDisplay" style="font-size:13px; font-weight:700; color:var(--accent-color); padding:6px 12px; background:var(--bg-tertiary); border-radius:6px;">Total XP: 0</span>
-            <span id="mobileSyncDot" title="Sync status"></span>
-            <div class="help-menu-wrap" id="helpMenuWrap">
-                <button class="icon-btn-header" onclick="toggleHelpMenu(event)" title="Help">?</button>
-                <div class="help-menu-dropdown" id="helpMenuDropdown">
-                    <button class="help-menu-item" onclick="closeHelpMenu(); document.getElementById('islandRulesModal').classList.add('active')">🏝️ How Island Works</button>
-                    <button class="help-menu-item" onclick="closeHelpMenu(); document.getElementById('rulesModal').classList.add('active')">📖 How XP Works</button>
-                    <button class="help-menu-item" onclick="closeHelpMenu(); document.getElementById('streakRulesModal').classList.add('active')">🔥 Streaks &amp; Recover Gems</button>
-                </div>
-            </div>
-            <button class="icon-btn-header" onclick="openSyncSettings()" title="Cloud Sync" id="syncHeaderBtn">☁️</button>
+<span id="mobileSyncDot" title="Sync status"></span>
+<button class="icon-btn-header" onclick="openSyncSettings()" title="Cloud Sync" id="syncHeaderBtn">☁️</button>
             <button class="icon-btn-header" onclick="openSettings()" title="Settings">⚙️</button>
             <button class="icon-btn-header" onclick="toggleTheme()" id="themeBtn" title="Toggle theme">🌙</button>
         </div>
@@ -87,10 +78,6 @@
                     </div>
                     <div class="today-stat-item" style="margin-left:auto;">
                         <span class="today-stat-label" id="todayHabitsCount">0 habits</span>
-                    </div>
-                    <div class="today-gem-stat">
-                        <span class="today-gem-label">Gems</span>
-                        <span class="today-gem-value">&#x1F48E; <span id="todayGemCount">0</span></span>
                     </div>
                 </div>
                 <!-- Unified grid: Focus tile first, then habit tiles in habits-page order -->
@@ -678,6 +665,43 @@
                 </div>
             </div>
             <div class="settings-section">
+                <div class="settings-section-title">Help</div>
+                <div style="display:grid; gap:8px;">
+                    <div class="setting-item">
+                        <div class="setting-label">🏝️ How Island Works</div>
+                        <div class="setting-control">
+                            <button class="btn-secondary" onclick="closeSettings(); document.getElementById('islandRulesModal').classList.add('active')">Open</button>
+                        </div>
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-label">📖 How XP Works</div>
+                        <div class="setting-control">
+                            <button class="btn-secondary" onclick="closeSettings(); document.getElementById('rulesModal').classList.add('active')">Open</button>
+                        </div>
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-label">🔥 Streaks &amp; Recover Gems</div>
+                        <div class="setting-control">
+                            <button class="btn-secondary" onclick="closeSettings(); document.getElementById('streakRulesModal').classList.add('active')">Open</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-section-title">Projects</div>
+                <div class="setting-item">
+                    <div>
+                        <div class="setting-label">Project Registry</div>
+                        <div class="setting-description">Add, rename, or delete projects. They appear in session and task dropdowns.</div>
+                    </div>
+                    <div class="setting-control">
+                        <button class="btn-secondary" onclick="closeSettings(); openProjectRegistry();">📁 Open</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-section">
                 <div class="settings-section-title">Tools</div>
                 <div class="setting-item">
                     <div>
@@ -1261,11 +1285,6 @@
                     XP: <span id="activeSessionLiveXP" style="font-weight: 700; color: var(--accent-color);">0.0</span>
                 </div>
             </div>
-        </div>
-
-        <div style="margin: 8px 0 10px;">
-            <div style="font-size: 13px; font-weight: 600; margin-bottom: 6px;">Project Tasks</div>
-            <div id="activeSessionTaskList" style="display: grid; gap: 6px; max-height: 180px; overflow: auto;"></div>
         </div>
 
         <div style="margin: 8px 0 12px;">
