@@ -214,7 +214,8 @@ let selectedProjectColor = '#1967d2';
                 projects = _rawProjects.map(p => ({
                     id: p.id,
                     name: p.name,
-                    ...(p.weeklyTargetHours > 0 ? { weeklyTargetHours: p.weeklyTargetHours } : {})
+                    ...(p.weeklyTargetHours > 0 ? { weeklyTargetHours: p.weeklyTargetHours } : {}),
+                    ...(p.updatedAt ? { updatedAt: p.updatedAt } : {})
                 }));
             } else {
                 projects = [];
@@ -6063,7 +6064,7 @@ function saveWeightAdjustments() {}
             const inp = document.getElementById('projectRegistryNewName');
             const name = inp ? inp.value.trim() : '';
             if (!name) return;
-            projects.push({ id: Date.now(), name });
+            projects.push({ id: Date.now(), name, updatedAt: Date.now() });
             saveProjects();
             if (inp) inp.value = '';
             renderProjectRegistry();
@@ -6103,6 +6104,7 @@ function saveWeightAdjustments() {}
             const p = projects.find(p => p.id === id);
             if (!p) return;
             p.name = name;
+            p.updatedAt = Date.now();
             sessionLogs.forEach(s => { if (s.projectId === id) s.projectName = name; });
             saveProjects();
             saveSessionLogs();
@@ -6123,6 +6125,7 @@ function saveWeightAdjustments() {}
             if (!p) return;
             const hrs = parseFloat(value);
             p.weeklyTargetHours = isNaN(hrs) || hrs <= 0 ? 0 : hrs;
+            p.updatedAt = Date.now();
             saveProjects();
         }
         // ──────────────────────────────────────────────────────────────────
@@ -6697,6 +6700,8 @@ let _cloudSyncTimer = null;
 let _isSyncing = false;
 let _suppressSync = false;
 let _realtimeListenerActive = false;
+let _origSetItem = null;   // captured before intercept override
+let _keyModTimes = {};     // key -> timestamp of last local user-driven write
 
 function setSyncStatus(status) {
     const el = document.getElementById('syncStatusIndicator');
@@ -6722,8 +6727,39 @@ function setSyncStatus(status) {
     }
 }
 
+function _recordKeyTime(key) {
+    _keyModTimes[key] = Date.now();
+    if (_origSetItem) {
+        try { _origSetItem.call(localStorage, 'lifescore_key_times_v4', JSON.stringify(_keyModTimes)); } catch(e) {}
+    }
+}
+
+function mergeProjects(localJson, cloudJson) {
+    let local = [], cloud = [];
+    try { local = JSON.parse(localJson || '[]'); } catch(e) {}
+    try { cloud = JSON.parse(cloudJson || '[]'); } catch(e) {}
+    if (!Array.isArray(local)) local = [];
+    if (!Array.isArray(cloud)) cloud = [];
+    const merged = new Map();
+    local.forEach(p => merged.set(String(p.id), p));
+    cloud.forEach(cp => {
+        const id = String(cp.id);
+        const lp = merged.get(id);
+        if (!lp) {
+            merged.set(id, cp);
+        } else {
+            const lt = lp.updatedAt || 0;
+            const ct = cp.updatedAt || 0;
+            if (ct > lt || (ct === lt && (cp.weeklyTargetHours || 0) > (lp.weeklyTargetHours || 0))) {
+                merged.set(id, cp);
+            }
+        }
+    });
+    return JSON.stringify([...merged.values()]);
+}
+
 function getCloudBundle() {
-    const bundle = { lastModified: Date.now() };
+    const bundle = { lastModified: Date.now(), keyTimes: { ..._keyModTimes } };
     SYNC_KEYS.forEach(key => {
         const v = localStorage.getItem(key);
         if (v !== null) bundle[key] = v;
@@ -6732,17 +6768,47 @@ function getCloudBundle() {
 }
 
 function applyCloudBundle(bundle) {
-    if (!bundle || typeof bundle !== 'object') return;
-    // Temporarily disable the setItem intercept so applying cloud data
-    // doesn't schedule another push
+    if (!bundle || typeof bundle !== 'object') return false;
+    const cloudKeyTimes = (bundle.keyTimes && typeof bundle.keyTimes === 'object') ? bundle.keyTimes : {};
+    const hasKeyTimes = Object.keys(cloudKeyTimes).length > 0;
+
     _suppressSync = true;
+    let anyChanged = false;
+
     SYNC_KEYS.forEach(key => {
-        if (bundle[key] != null) localStorage.setItem(key, bundle[key]);
+        if (bundle[key] == null) return;
+
+        if (key === 'lifescore_projects_v4') {
+            // Always merge projects by ID using updatedAt
+            const merged = mergeProjects(localStorage.getItem(key), bundle[key]);
+            const current = localStorage.getItem(key);
+            if (merged !== current) { localStorage.setItem(key, merged); anyChanged = true; }
+            _keyModTimes[key] = Math.max(_keyModTimes[key] || 0, cloudKeyTimes[key] || 0);
+        } else if (hasKeyTimes) {
+            // Per-key merge: take cloud only if its timestamp is at least as new
+            const localTime = _keyModTimes[key] || 0;
+            const cloudTime = cloudKeyTimes[key] || 0;
+            if (cloudTime >= localTime) {
+                const current = localStorage.getItem(key);
+                if (bundle[key] !== current) { localStorage.setItem(key, bundle[key]); anyChanged = true; }
+                _keyModTimes[key] = cloudTime;
+            }
+            // else local is newer — keep it
+        } else {
+            // Bootstrap: old bundle with no keyTimes — apply everything (cloud wins)
+            const current = localStorage.getItem(key);
+            if (bundle[key] !== current) { localStorage.setItem(key, bundle[key]); anyChanged = true; }
+        }
     });
-    if (bundle.lastModified) {
-        localStorage.setItem('lifescore_last_modified_v4', String(bundle.lastModified));
-    }
+
+    if (bundle.lastModified) localStorage.setItem('lifescore_last_modified_v4', String(bundle.lastModified));
     _suppressSync = false;
+
+    // Persist updated key timestamps (bypass intercept directly)
+    if (_origSetItem) {
+        try { _origSetItem.call(localStorage, 'lifescore_key_times_v4', JSON.stringify(_keyModTimes)); } catch(e) {}
+    }
+    return anyChanged;
 }
 
 async function pushToCloud() {
@@ -6774,10 +6840,11 @@ async function pullFromCloud() {
         if (!cloudBundle) { setSyncStatus('synced'); return false; }
         const localTs = parseInt(localStorage.getItem('lifescore_last_modified_v4') || '0', 10);
         const cloudTs = cloudBundle.lastModified || 0;
-        if (cloudTs > localTs) {
-            applyCloudBundle(cloudBundle);
+        const cloudHasKeyTimes = cloudBundle.keyTimes && Object.keys(cloudBundle.keyTimes).length > 0;
+        if (cloudHasKeyTimes || cloudTs > localTs) {
+            const changed = applyCloudBundle(cloudBundle);
             setSyncStatus('synced');
-            return true;
+            return changed;
         }
         setSyncStatus('synced');
         return false;
@@ -6806,20 +6873,23 @@ function startRealtimeListener() {
         if (!cloudBundle) return;
         const localTs = parseInt(localStorage.getItem('lifescore_last_modified_v4') || '0', 10);
         const cloudTs = cloudBundle.lastModified || 0;
-        if (cloudTs > localTs + 1000) {
-            applyCloudBundle(cloudBundle);
-            loadData();
-            loadIslandData();
-            loadWorldProgress();
-            migrateData();
-            recomputeAllStreaks();
-            checkWorldIslandUnlocks(false);
-            applySettings();
-            renderTabs();
-            updateProjectSelects();
-            renderTodayView();
-            renderHabitLog();
-            if (settings.gamificationEnabled) calculateScores();
+        const cloudHasKeyTimes = cloudBundle.keyTimes && Object.keys(cloudBundle.keyTimes).length > 0;
+        if (cloudTs > localTs + 1000 || cloudHasKeyTimes) {
+            const changed = applyCloudBundle(cloudBundle);
+            if (changed) {
+                loadData();
+                loadIslandData();
+                loadWorldProgress();
+                migrateData();
+                recomputeAllStreaks();
+                checkWorldIslandUnlocks(false);
+                applySettings();
+                renderTabs();
+                updateProjectSelects();
+                renderTodayView();
+                renderHabitLog();
+                if (settings.gamificationEnabled) calculateScores();
+            }
         }
     }, e => {
         console.error('[Sync] Listener error:', e.message);
@@ -6827,7 +6897,14 @@ function startRealtimeListener() {
 }
 
 async function initCloudSync() {
-    const _origSetItem = Storage.prototype.setItem;
+    // Load persisted per-key timestamps from previous session
+    try {
+        const saved = localStorage.getItem('lifescore_key_times_v4');
+        if (saved) _keyModTimes = JSON.parse(saved);
+    } catch(e) {}
+
+    // Capture original setItem at module level, then install intercept
+    _origSetItem = Storage.prototype.setItem;
     Storage.prototype.setItem = function(key, value) {
         _origSetItem.call(this, key, value);
         if (this === localStorage &&
@@ -6836,7 +6913,9 @@ async function initCloudSync() {
             key !== 'lifescore_last_modified_v4' &&
             key !== 'lifescore_current_tab_v4' &&
             key !== 'lifescore_day_cutoff_v4' &&
-            key !== 'lifescore_today_view_mode_v4') {
+            key !== 'lifescore_today_view_mode_v4' &&
+            key !== 'lifescore_key_times_v4') {
+            _recordKeyTime(key);
             scheduleCloudSync();
         }
     };
