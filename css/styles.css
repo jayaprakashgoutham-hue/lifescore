@@ -2932,44 +2932,79 @@
    Desktop layout is completely unchanged above this point.
    ================================================================ */
 
+/* Desktop: hide mobile-only elements */
+#mobileShopBtn    { display: none; }
+#mobileShopCloseBtn { display: none; }
+#mobileShopBackdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 449; }
+#mobileSessionHandle { display: none; }
+#mobileHabitCards { display: none; }
+#mobileSyncDot    { display: none; }
+#mobileOnlySettingsSection { display: none; }
+
 @keyframes tabFadeIn {
     from { opacity: 0; transform: translateY(6px); }
     to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideUpSheet {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
 }
 
 @media (max-width: 768px) {
     body { font-size: 15px; }
 
-    /* ── Fixed slim header ── */
+    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       ISSUE 6 — Slim header
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
     .top-header {
         position: fixed;
         top: 0; left: 0; right: 0;
-        padding: 8px 10px;
+        padding: 6px 10px;
         z-index: 300;
     }
+    /* Hide: help menu, cloud sync button, theme toggle */
+    #helpMenuWrap  { display: none !important; }
+    #syncHeaderBtn { display: none !important; }
+    #themeBtn      { display: none !important; }
+    /* Hide island name — keep level badge compact */
+    #islandBadgeText { display: none; }
     #appName { display: none; }
     .app-logo { font-size: 20px; gap: 4px; }
-    #islandBadgeText { display: none; }
-    #totalXpDisplay { font-size: 11px; padding: 4px 8px; }
     .header-actions { gap: 5px; }
     .icon-btn-header { padding: 6px 9px; font-size: 15px; }
+    #totalXpDisplay { font-size: 11px; padding: 4px 8px; }
 
-    /* ── App body: hide sidebar, account for fixed header ── */
-    .left-sidebar { display: none !important; }
-    .app-body {
-        height: auto;
-        padding-top: 56px;
-        overflow: visible;
+    /* Mobile sync dot — small circle next to XP */
+    #mobileSyncDot {
+        display: inline-block;
+        width: 9px; height: 9px;
+        border-radius: 50%;
+        background: #10b981;
+        flex-shrink: 0;
+        transition: background 0.3s;
     }
+    /* Hide the big floating sync badge on mobile */
+    #syncStatusIndicator { display: none !important; }
+
+    /* Mobile-only settings section */
+    #mobileOnlySettingsSection { display: block; }
+
+    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       App body layout
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+    .left-sidebar { display: none !important; }
+    .app-body { height: auto; padding-top: 52px; overflow: visible; }
     .main-content-area {
         height: auto;
-        min-height: calc(100vh - 56px - 64px);
+        min-height: calc(100vh - 52px - 64px);
         overflow-y: auto;
         -webkit-overflow-scrolling: touch;
         padding-bottom: 72px;
     }
 
-    /* ── Bottom navigation bar ── */
+    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       Bottom navigation bar
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
     #mobileBottomNav {
         display: flex !important;
         position: fixed;
@@ -2982,77 +3017,250 @@
         box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
     }
     .mobile-nav-item {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 2px;
-        background: none;
-        border: none;
-        cursor: pointer;
-        color: var(--text-secondary);
-        padding: 6px 0;
-        min-height: 44px;
-        transition: color 0.18s;
-        -webkit-tap-highlight-color: transparent;
+        flex: 1; display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        gap: 2px; background: none; border: none; cursor: pointer;
+        color: var(--text-secondary); padding: 6px 0; min-height: 44px;
+        transition: color 0.18s; -webkit-tap-highlight-color: transparent;
     }
     .mobile-nav-item.active { color: var(--accent-color); }
     .mobile-nav-item.active .mobile-nav-icon { transform: scale(1.15); }
     .mobile-nav-icon { font-size: 22px; transition: transform 0.15s; }
     .mobile-nav-label { font-size: 10px; font-weight: 600; letter-spacing: 0.2px; }
 
-    /* ── Tab fade-in animation ── */
+    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       Tab animation
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
     .tab-content.active { animation: tabFadeIn 0.22s ease; }
 
-    /* ── Container ── */
+    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       General layout
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
     .container { padding: 12px; max-width: 100%; }
     .content-header { flex-wrap: wrap; gap: 8px; }
     .content-title { font-size: 20px; }
+    .btn-primary, .btn-secondary { min-height: 44px; font-size: 14px; }
 
-    /* ── Today tab ── */
+    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       Modals — bottom sheet
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+    .modal.active { align-items: flex-end !important; padding: 0 !important; }
+    .modal-content {
+        width: 100% !important; max-width: 100% !important;
+        border-radius: 20px 20px 0 0 !important;
+        margin: 0 !important; max-height: 88vh !important;
+        overflow-y: auto;
+        padding-bottom: max(env(safe-area-inset-bottom, 0px), 16px);
+    }
+
+    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       Today tab
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
     .today-habits-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 8px; }
     .today-stats-bar { flex-wrap: wrap; gap: 8px; }
     .today-stat-item { min-height: 44px; }
     .today-section { padding: 12px; }
 
-    /* ── Habit log: horizontal scroll on mobile ── */
-    .habit-log-grid {
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-        display: block;
-    }
-    .week-selector { gap: 6px; font-size: 13px; flex-wrap: wrap; justify-content: center; }
-    .week-selector button { padding: 6px 12px; }
-
-    /* ── Score breakdown: 2 columns ── */
+    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       Analytics
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
     .score-breakdown { grid-template-columns: 1fr 1fr !important; gap: 10px; }
-
-    /* ── Chart heights — slightly shorter on mobile ── */
     .chart-container canvas { height: 220px !important; }
 
-    /* ── Buttons — larger touch targets ── */
-    .btn-primary, .btn-secondary { min-height: 44px; font-size: 14px; }
-
-    /* ── Modals — bottom sheet on mobile ── */
-    .modal.active { align-items: flex-end !important; padding: 0 !important; }
-    .modal-content {
-        width: 100% !important;
-        max-width: 100% !important;
-        border-radius: 20px 20px 0 0 !important;
-        margin: 0 !important;
-        max-height: 88vh !important;
-        overflow-y: auto;
-        padding-bottom: max(env(safe-area-inset-bottom, 0px), 16px);
-    }
-
-    /* ── Sync status: above bottom nav ── */
-    #syncStatusIndicator { bottom: 74px !important; right: 12px !important; }
-
-    /* ── Day detail full-screen panel ── */
+    /* Day detail panel */
     #dayDetailPanel > div {
-        border-radius: 0 !important;
-        max-height: 100vh !important;
-        overflow-y: auto;
+        border-radius: 0 !important; max-height: 100vh !important; overflow-y: auto;
     }
+
+    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       ISSUE 3 & 4 — Habits: mobile card view
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+    .habit-log-grid { display: none !important; }
+    #mobileHabitCards { display: block; padding: 4px 0; }
+
+    .week-selector { gap: 6px; font-size: 13px; flex-wrap: wrap; justify-content: center; }
+    .week-selector button { padding: 6px 12px; min-height: 40px; }
+
+    .mobile-habit-card {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        margin-bottom: 8px;
+        overflow: hidden;
+        transition: border-color 0.15s;
+    }
+    .mobile-habit-card.expanded { border-color: var(--accent-color); }
+    .mobile-habit-card-main {
+        display: flex; align-items: center; gap: 8px;
+        padding: 10px 12px; cursor: pointer; min-height: 52px;
+        -webkit-tap-highlight-color: transparent;
+        user-select: none;
+    }
+    .mobile-habit-card-name {
+        flex: 1; font-size: 14px; font-weight: 600;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .mobile-habit-today-status {
+        width: 34px; height: 34px; border-radius: 8px; flex-shrink: 0;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 16px; font-weight: 700;
+    }
+    .mobile-habit-today-status.done    { background: var(--accent-color); color: #fff; }
+    .mobile-habit-today-status.failed  { background: rgba(239,68,68,0.15); color: #ef4444; }
+    .mobile-habit-today-status.pending { background: var(--bg-tertiary); color: var(--text-secondary); }
+    .mobile-habit-chevron {
+        font-size: 11px; color: var(--text-secondary); flex-shrink: 0;
+        transition: transform 0.2s; display: inline-block;
+    }
+    .mobile-habit-card.expanded .mobile-habit-chevron { transform: rotate(180deg); }
+
+    .mobile-habit-week {
+        display: none; padding: 8px 12px 12px;
+        border-top: 1px solid var(--border-color);
+    }
+    .mobile-habit-week-grid {
+        display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;
+    }
+    .mobile-habit-card.expanded .mobile-habit-week { display: block; }
+
+    .mobile-habit-day {
+        display: flex; flex-direction: column; align-items: center; gap: 2px;
+    }
+    .mobile-habit-day-label {
+        font-size: 9px; font-weight: 700; color: var(--text-secondary);
+        text-transform: uppercase; letter-spacing: 0.3px;
+    }
+    .mobile-habit-day-num { font-size: 9px; color: var(--text-secondary); }
+    .mobile-habit-day-cell {
+        width: 34px; height: 34px; border-radius: 7px;
+        background: var(--bg-tertiary);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 14px; font-weight: 700; cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+        transition: background 0.12s;
+    }
+    .mobile-habit-day-cell.completed { background: var(--accent-color); color: #fff; }
+    .mobile-habit-day-cell.failed    { background: rgba(239,68,68,0.15); color: #ef4444; }
+    .mobile-habit-day-cell.na        { opacity: 0.3; cursor: default; font-size: 10px; }
+    .mobile-habit-day-cell.today-hl  { outline: 2px solid var(--accent-color); outline-offset: 1px; }
+
+    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       ISSUE 1 — Island page
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+    .island-main-layout { flex-direction: column; gap: 0; }
+    .island-canvas-wrap { position: relative; }
+    .island-canvas {
+        min-height: unset !important;
+        height: 250px !important;
+        aspect-ratio: unset !important;
+        border-radius: 12px 12px 0 0 !important;
+    }
+
+    /* Shop button overlaid on canvas */
+    #mobileShopBtn {
+        display: flex !important;
+        position: absolute; bottom: 12px; right: 12px;
+        z-index: 10;
+        align-items: center; gap: 6px;
+        background: rgba(0,0,0,0.65);
+        color: #fff;
+        border: none; border-radius: 20px;
+        padding: 8px 16px; font-size: 13px; font-weight: 700;
+        cursor: pointer; backdrop-filter: blur(4px);
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    /* Shop panel → slide-up bottom sheet */
+    .island-shop-panel {
+        position: fixed !important;
+        bottom: 64px; left: 0; right: 0;
+        width: auto !important;
+        height: 70vh;
+        z-index: 450;
+        border-radius: 20px 20px 0 0 !important;
+        border: none !important;
+        transform: translateY(110%);
+        transition: transform 0.3s cubic-bezier(0.32,0.72,0,1);
+        box-shadow: 0 -6px 30px rgba(0,0,0,0.25);
+    }
+    .island-shop-panel.mobile-open {
+        transform: translateY(0);
+    }
+    /* Shop backdrop */
+    #mobileShopBackdrop.open {
+        display: block;
+        animation: fadeInBg 0.2s ease;
+    }
+    @keyframes fadeInBg { from { opacity: 0; } to { opacity: 1; } }
+
+    /* Shop header close button */
+    .island-shop-header {
+        display: flex !important;
+        align-items: center;
+        justify-content: space-between;
+    }
+    #mobileShopCloseBtn {
+        display: flex !important;
+        align-items: center; justify-content: center;
+        background: var(--bg-tertiary); border: none;
+        width: 28px; height: 28px; border-radius: 50%;
+        font-size: 14px; color: var(--text-secondary);
+        cursor: pointer; flex-shrink: 0;
+    }
+
+    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+       ISSUE 2 — Active session bar
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+    #activeSessionView {
+        left: 0 !important; right: 0 !important;
+        bottom: 64px !important;
+        width: 100% !important; max-width: 100% !important;
+        border-radius: 14px 14px 0 0 !important;
+        border-left: none !important; border-right: none !important; border-bottom: none !important;
+        border-top: 2px solid var(--accent-color) !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+        max-height: 54px !important;
+        box-shadow: 0 -4px 20px rgba(0,0,0,0.12) !important;
+    }
+    #activeSessionView.mobile-expanded {
+        max-height: 78vh !important;
+        overflow-y: auto !important;
+    }
+    /* Hide the desktop header row ("Active Session" label + minimize btn) */
+    #activeSessionView > div:nth-child(2) { display: none !important; }
+    /* Hide content by default; show when expanded */
+    #activeSessionContent { display: none !important; }
+    #activeSessionView.mobile-expanded #activeSessionContent { display: block !important; }
+    /* Expanded: add padding back around content */
+    #activeSessionView.mobile-expanded { padding: 0 !important; }
+    #activeSessionView.mobile-expanded #activeSessionContent {
+        padding: 14px;
+    }
+
+    /* Mobile session handle (slim bar) */
+    #mobileSessionHandle {
+        display: flex !important;
+        align-items: center; gap: 10px;
+        height: 54px; padding: 0 16px;
+        cursor: pointer; background: var(--bg-secondary);
+        -webkit-tap-highlight-color: transparent;
+        user-select: none;
+    }
+    #mobileHandleName {
+        flex: 1; font-size: 13px; font-weight: 700;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        color: var(--text-primary);
+    }
+    #mobileHandleTimer {
+        font-size: 15px; font-weight: 800; color: var(--accent-color); flex-shrink: 0;
+    }
+    #mobileHandleXP {
+        font-size: 11px; color: var(--text-secondary); flex-shrink: 0;
+    }
+    #mobileHandleChevron {
+        font-size: 12px; color: var(--text-secondary); flex-shrink: 0;
+        transition: transform 0.2s;
+    }
+    #activeSessionView.mobile-expanded #mobileHandleChevron { transform: rotate(180deg); }
 }

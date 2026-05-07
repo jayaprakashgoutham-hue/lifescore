@@ -33,6 +33,7 @@
                 <span id="islandBadgeText">Sandy Shores 🌴</span>
             </div>
             <span id="totalXpDisplay" style="font-size:13px; font-weight:700; color:var(--accent-color); padding:6px 12px; background:var(--bg-tertiary); border-radius:6px;">Total XP: 0</span>
+            <span id="mobileSyncDot" title="Sync status"></span>
             <div class="help-menu-wrap" id="helpMenuWrap">
                 <button class="icon-btn-header" onclick="toggleHelpMenu(event)" title="Help">?</button>
                 <div class="help-menu-dropdown" id="helpMenuDropdown">
@@ -117,6 +118,7 @@
                     <button onclick="changeWeek(1)">Next Week →</button>
                 </div>
                 <div class="habit-log-grid" id="habitLogGrid"></div>
+                <div id="mobileHabitCards"></div>
                 <div id="habitHeaderFilterMenus">
                     <div class="habit-filter-menu" id="habitFilterNameMenu">
                         <label><input type="radio" name="habitNameSort" value="az" onchange="setHabitNameSort('az')"> Sort A-Z</label>
@@ -269,11 +271,15 @@
                             </div>
                         </div>
                         <div class="island-canvas-hint" id="islandCanvasHint"></div>
+                        <button id="mobileShopBtn" onclick="toggleMobileShop()">🏪 Shop</button>
                     </div>
 
                     <!-- Shop Panel -->
                     <div class="island-shop-panel">
-                        <div class="island-shop-header">🏪 Island Shop</div>
+                        <div class="island-shop-header">
+                            <span>🏪 Island Shop</span>
+                            <button id="mobileShopCloseBtn" onclick="closeMobileShop()">✕</button>
+                        </div>
                         <div id="islandShopList" class="island-shop-list"></div>
                         <div class="island-shop-footer">
                             Earn XP from habits &amp; sessions to spend here
@@ -626,6 +632,16 @@
    <div class="modal" id="settingsModal">
         <div class="modal-content large">
             <div class="modal-header">⚙️ Settings</div>
+
+            <div class="settings-section" id="mobileOnlySettingsSection">
+                <div class="settings-section-title">Display</div>
+                <div class="setting-item">
+                    <div class="setting-label">Theme</div>
+                    <div class="setting-control">
+                        <button class="btn-secondary" onclick="toggleTheme()" style="font-size:13px; padding:8px 16px;">🌙 Toggle Dark / Light</button>
+                    </div>
+                </div>
+            </div>
 
             <div class="settings-section">
                 <div class="settings-section-title">Session Audio</div>
@@ -1224,6 +1240,12 @@
     </div>
 
     <div id="activeSessionView" style="display: none; position: fixed; left: 20px; bottom: 20px; width: min(420px, calc(100vw - 40px)); max-height: 70vh; overflow: auto; z-index: 1005; padding: 14px; border: 2px solid var(--accent-color); border-radius: 10px; background: var(--bg-secondary); box-shadow: 0 8px 24px var(--shadow);">
+        <div id="mobileSessionHandle" onclick="toggleMobileSessionExpand()">
+            <span id="mobileHandleName"></span>
+            <span id="mobileHandleTimer"></span>
+            <span id="mobileHandleXP"></span>
+            <span id="mobileHandleChevron">▲</span>
+        </div>
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
             <div style="font-size: 13px; color: var(--text-secondary);">Active Session</div>
             <button id="sessionMinimizeBtn" onclick="toggleActiveSessionMinimize()" style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-secondary); padding: 0; line-height: 1;" title="Minimize">▼</button>
@@ -1449,6 +1471,8 @@
         <button class="btn-secondary" onclick="closeSyncSettings()" style="width:100%; margin-top:12px;">Close</button>
     </div>
 </div>
+
+<div id="mobileShopBackdrop" onclick="closeMobileShop()"></div>
 
 <!-- Mobile Bottom Navigation -->
 <nav id="mobileBottomNav" style="display:none;">

@@ -1069,17 +1069,24 @@ function savePastSession() {
     const hh = Math.floor(totalSeconds / 3600);
     const mm = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
     const ss = String(totalSeconds % 60).padStart(2, '0');
+    const timeStr = hh > 0 ? `${hh}:${mm}:${ss}` : `${mm}:${ss}`;
+
     const timerEl = document.getElementById('activeSessionTimer');
     if (!timerEl) return;
-    timerEl.textContent = hh > 0 ? `${hh}:${mm}:${ss}` : `${mm}:${ss}`;
+    timerEl.textContent = timeStr;
     if (countingUp) timerEl.style.color = 'var(--accent-color)';
     else timerEl.style.color = '';
 
     const xpEl = document.getElementById('activeSessionLiveXP');
-    if (xpEl && activeSession) {
-        const elapsedMin = Math.floor((Date.now() - activeSession.startTime) / 60000);
-        xpEl.textContent = (elapsedMin * 0.25).toFixed(1);
-    }
+    const elapsedMin = activeSession ? Math.floor((Date.now() - activeSession.startTime) / 60000) : 0;
+    const xpVal = (elapsedMin * 0.25).toFixed(1);
+    if (xpEl && activeSession) xpEl.textContent = xpVal;
+
+    // Mirror into mobile slim bar
+    const mobileTimer = document.getElementById('mobileHandleTimer');
+    if (mobileTimer) mobileTimer.textContent = timeStr;
+    const mobileXP = document.getElementById('mobileHandleXP');
+    if (mobileXP && activeSession) mobileXP.textContent = `${xpVal} XP`;
 }
 
         function playSessionEndSound() {
@@ -1246,6 +1253,8 @@ function toggleActiveSessionMinimize() {
 
     container.style.display = 'block';
     projectEl.textContent = activeSession.projectName;
+    const mobileHandleName = document.getElementById('mobileHandleName');
+    if (mobileHandleName) mobileHandleName.textContent = activeSession.projectName;
     const buddyEl = document.getElementById('activeSessionBuddy');
     if (buddyEl) {
         const d = activeSession.duration;
@@ -3834,6 +3843,7 @@ function unskipTask(taskId) {
             });
             
             updateHabitScores();
+            renderMobileHabitCards(last7Days, filteredHabits, todayStr);
         }
 
         function showHabitValueModal(habitId, dateStr) {
@@ -6473,20 +6483,25 @@ let _realtimeListenerActive = false;
 
 function setSyncStatus(status) {
     const el = document.getElementById('syncStatusIndicator');
+    const dot = document.getElementById('mobileSyncDot');
     const map = {
-        syncing: { text: '⟳ Syncing…',   color: '#f59e0b', bg: '#fffbeb' },
-        synced:  { text: '✓ Synced',      color: '#10b981', bg: '#ecfdf5' },
-        offline: { text: '⚡ Offline',    color: '#6b7280', bg: '#f3f4f6' },
-        error:   { text: '✗ Sync error',  color: '#ef4444', bg: '#fef2f2' },
+        syncing: { text: '⟳ Syncing…',   color: '#f59e0b', bg: '#fffbeb', dot: '#f59e0b' },
+        synced:  { text: '✓ Synced',      color: '#10b981', bg: '#ecfdf5', dot: '#10b981' },
+        offline: { text: '⚡ Offline',    color: '#6b7280', bg: '#f3f4f6', dot: '#6b7280' },
+        error:   { text: '✗ Sync error',  color: '#ef4444', bg: '#fef2f2', dot: '#ef4444' },
     };
     const cfg = map[status];
-    if (!el || !cfg) return;
-    el.textContent = cfg.text;
-    el.style.color = cfg.color;
-    el.style.background = cfg.bg;
-    el.style.display = 'block';
-    if (status === 'synced') {
-        setTimeout(() => { if (el) el.style.display = 'none'; }, 3000);
+    if (!cfg) return;
+    if (el) {
+        el.textContent = cfg.text;
+        el.style.color = cfg.color;
+        el.style.background = cfg.bg;
+        el.style.display = 'block';
+        if (status === 'synced') setTimeout(() => { if (el) el.style.display = 'none'; }, 3000);
+    }
+    if (dot) {
+        dot.style.background = cfg.dot;
+        dot.title = cfg.text;
     }
 }
 
@@ -6687,4 +6702,101 @@ async function syncNow() {
         }
     });
 })();
+
+// ========================================
+// MOBILE UI HELPERS
+// ========================================
+
+// ── ISSUE 1: Island shop bottom sheet ──────────────────────────────────────────
+function toggleMobileShop() {
+    const panel = document.querySelector('.island-shop-panel');
+    const backdrop = document.getElementById('mobileShopBackdrop');
+    if (!panel) return;
+    const isOpen = panel.classList.contains('mobile-open');
+    if (isOpen) { closeMobileShop(); return; }
+    panel.classList.add('mobile-open');
+    if (backdrop) backdrop.classList.add('open');
+}
+function closeMobileShop() {
+    document.querySelector('.island-shop-panel')?.classList.remove('mobile-open');
+    document.getElementById('mobileShopBackdrop')?.classList.remove('open');
+}
+
+// ── ISSUE 2: Active session slim bar ───────────────────────────────────────────
+function toggleMobileSessionExpand() {
+    const view = document.getElementById('activeSessionView');
+    if (!view) return;
+    view.classList.toggle('mobile-expanded');
+}
+
+// ── ISSUE 3 & 4: Habits mobile card view ──────────────────────────────────────
+function toggleMobileHabitCard(habitId) {
+    const card = document.querySelector(`.mobile-habit-card[data-habit-id="${habitId}"]`);
+    if (card) card.classList.toggle('expanded');
+}
+
+function renderMobileHabitCards(last7Days, filteredHabits, todayStr) {
+    const container = document.getElementById('mobileHabitCards');
+    if (!container) return;
+    if (!last7Days || !filteredHabits) { container.innerHTML = ''; return; }
+
+    container.innerHTML = filteredHabits.map(habit => {
+        const timeLabel = formatReminderTime(habit.reminderTime);
+        const todayLog = habitLogs[habit.id]?.[todayStr];
+        const todayState = getHabitLogState(todayLog);
+        const stateClass = todayState === 'done' ? 'done' : todayState === 'failed' ? 'failed' : 'pending';
+        const stateChar = todayState === 'done' ? '✓' : todayState === 'failed' ? '✗' : '○';
+
+        const today = new Date(todayStr + 'T12:00:00');
+        const trackStart = habit.startTrackingDate || '1900-01-01';
+        const habitDays = habit.customDays || [0,1,2,3,4,5,6];
+
+        const weekCells = last7Days.map(date => {
+            const dateStr = date.toISOString().split('T')[0];
+            const dayLabel = date.toLocaleDateString('en-US', { weekday: 'short' });
+            const dayNum = date.getDate();
+            const isToday = date.toDateString() === today.toDateString();
+            const isFuture = dateStr > todayStr;
+            const dayOfWeek = date.getDay();
+            const isApplicable = habitDays.includes(dayOfWeek);
+            const beforeTracking = dateStr < trackStart;
+
+            let cellClass = '', cellText = '·', clickable = false;
+            if (!isApplicable || beforeTracking) {
+                cellClass = 'na'; cellText = '·';
+            } else if (isFuture) {
+                cellText = '·';
+            } else {
+                clickable = true;
+                const log = habitLogs[habit.id]?.[dateStr];
+                const st = getHabitLogState(log);
+                if (st === 'done') { cellClass = 'completed'; cellText = '✓'; }
+                else if (st === 'failed') { cellClass = 'failed'; cellText = '✗'; }
+                else { cellClass = 'failed'; cellText = '✗'; }
+            }
+            if (isToday) cellClass += ' today-hl';
+
+            const onclick = clickable ? `onclick="showHabitValueModal(${habit.id},'${dateStr}')"` : '';
+            return `<div class="mobile-habit-day">
+                <span class="mobile-habit-day-label" style="${isToday ? 'color:var(--accent-color);' : ''}">${dayLabel}</span>
+                <span class="mobile-habit-day-num">${dayNum}</span>
+                <div class="mobile-habit-day-cell ${cellClass}" ${onclick}>${cellText}</div>
+            </div>`;
+        }).join('');
+
+        return `<div class="mobile-habit-card" data-habit-id="${habit.id}">
+            <div class="mobile-habit-card-main" onclick="toggleMobileHabitCard(${habit.id})">
+                <span style="font-size:22px;flex-shrink:0;">${habit.icon || '🎯'}</span>
+                <span class="mobile-habit-card-name">${escapeHtml(habit.name)}</span>
+                ${timeLabel ? `<span class="time-chip-sm">${timeLabel}</span>` : ''}
+                <div class="mobile-habit-today-status ${stateClass}" onclick="event.stopPropagation();showHabitValueModal(${habit.id},'${todayStr}')">${stateChar}</div>
+                <button class="more-btn" onclick="event.stopPropagation();editHabit(${habit.id})" style="flex-shrink:0;">⋮</button>
+                <span class="mobile-habit-chevron">▼</span>
+            </div>
+            <div class="mobile-habit-week">
+                <div class="mobile-habit-week-grid">${weekCells}</div>
+            </div>
+        </div>`;
+    }).join('');
+}
 
