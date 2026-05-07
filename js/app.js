@@ -618,12 +618,12 @@ function getCurrentWorldIslandIdx() {
     return idx;
 }
 function updateLevelBadge() {
-    const level = getUserLevel();
-    const isl = WORLD_ISLANDS[getCurrentWorldIslandIdx()];
-    const lvlEl = document.getElementById('levelBadgeText');
-    const islEl = document.getElementById('islandBadgeText');
-    if (lvlEl) lvlEl.textContent = `Level ${level}`;
-    if (islEl) islEl.textContent = `${isl.name} ${isl.icon}`;
+    const el = document.getElementById('islandLevelBadgeText');
+    if (!el) return;
+    try {
+        const lvl = getIslandLevelInfo();
+        el.textContent = `${lvl.icon} Lv.${lvl.level} · ${lvl.name}`;
+    } catch(e) {}
 }
 let _islandUnlockQueue = [];
 let _islandUnlockShowing = false;
@@ -669,6 +669,72 @@ function closeIslandUnlockPopup() {
         _islandUnlockShowing = false;
     }
 }
+function openIslandLevelModal() {
+    const modal = document.getElementById('islandLevelModal');
+    if (!modal) return;
+    modal.style.display = 'flex';
+
+    const cur = getIslandLevelInfo();
+    const spent = islandData.xpSpent;
+    const nextLvl = ISLAND_LEVELS.find(l => l.threshold > spent);
+
+    const nameEl = document.getElementById('ilmCurrentName');
+    if (nameEl) nameEl.textContent = `${cur.icon} Lv.${cur.level} · ${cur.name}`;
+
+    const labelEl = document.getElementById('ilmProgressLabel');
+    const pctEl   = document.getElementById('ilmProgressPct');
+    const fillEl  = document.getElementById('ilmProgressFill');
+    const hintEl  = document.getElementById('ilmProgressHint');
+
+    if (nextLvl) {
+        const range = nextLvl.threshold - cur.threshold;
+        const done  = spent - cur.threshold;
+        const pct   = range > 0 ? Math.min(100, Math.round((done / range) * 100)) : 100;
+        if (labelEl) labelEl.textContent = `${spent} XP spent · ${nextLvl.threshold} XP to reach Lv.${nextLvl.level}`;
+        if (pctEl)   pctEl.textContent   = pct + '%';
+        if (fillEl)  fillEl.style.width  = pct + '%';
+        const xpLeft = nextLvl.threshold - spent;
+        if (hintEl)  hintEl.textContent  = `${xpLeft} more XP to reach ${nextLvl.name}`;
+    } else {
+        if (labelEl) labelEl.textContent = `${spent} XP spent · Island fully mastered!`;
+        if (pctEl)   pctEl.textContent   = '100%';
+        if (fillEl)  fillEl.style.width  = '100%';
+        if (hintEl)  hintEl.textContent  = '🎉 You have reached Paradise!';
+    }
+
+    const listEl = document.getElementById('ilmLevelsList');
+    if (!listEl) return;
+    listEl.innerHTML = ISLAND_LEVELS.map(l => {
+        const isAchieved = spent >= l.threshold;
+        const isCurrent  = l.level === cur.level;
+        const unlockTags = (l.unlocks || [])
+            .map(u => `<span class="ilm-unlock-tag">${u}</span>`)
+            .join('');
+        const rowClass = isCurrent ? 'ilm-level-current' : !isAchieved ? 'ilm-level-locked' : '';
+        const badge = isCurrent
+            ? '<span class="ilm-badge-current">Current</span>'
+            : isAchieved
+                ? '<span class="ilm-badge-done">✓</span>'
+                : `<span class="ilm-badge-locked">🔒</span>`;
+        const xpLabel = l.threshold === 0 ? 'Starting level' : `${l.threshold} XP spent`;
+        return `
+        <div class="ilm-level-row ${rowClass}">
+            <div class="ilm-level-icon-wrap ${isAchieved ? 'ilm-icon-achieved' : ''}">${l.icon}</div>
+            <div class="ilm-level-info">
+                <div class="ilm-level-name">Lv.${l.level} · ${l.name}</div>
+                <div class="ilm-level-xp">${xpLabel}</div>
+                ${unlockTags ? `<div class="ilm-unlocks">${unlockTags}</div>` : ''}
+            </div>
+            <div class="ilm-level-badge">${badge}</div>
+        </div>`;
+    }).join('');
+}
+
+function closeIslandLevelModal() {
+    const modal = document.getElementById('islandLevelModal');
+    if (modal) modal.style.display = 'none';
+}
+
 function openWorldMap() {
     renderWorldMap();
     document.getElementById('worldMapModal').style.display = 'flex';
@@ -6024,6 +6090,8 @@ function saveWeightAdjustments() {}
         }
 
         // ── Project Registry ──────────────────────────────────────────────
+        let _dragSrcProjectId = null;
+
         function openProjectRegistry() {
             renderProjectRegistry();
             document.getElementById('projectRegistryModal').classList.add('active');
@@ -6041,14 +6109,26 @@ function saveWeightAdjustments() {}
             if (!list) return;
             if (projects.length === 0) {
                 list.innerHTML = '<div style="color:var(--text-secondary); text-align:center; padding:24px; font-size:14px;">No projects yet. Add one above.</div>';
+                renderProjectRegistryTotal();
                 return;
             }
             list.innerHTML = projects.map(p => `
-                <div style="display:flex; align-items:center; gap:12px; padding:14px 4px; border-bottom:1px solid var(--border-color);" id="proj-row-${p.id}">
+                <div draggable="true"
+                     ondragstart="projDragStart(${p.id})"
+                     ondragover="projDragOver(event,${p.id})"
+                     ondrop="projDrop(event,${p.id})"
+                     ondragend="projDragEnd()"
+                     ondragleave="projDragLeave(event,${p.id})"
+                     style="display:flex; align-items:center; gap:10px; padding:12px 4px; border-bottom:1px solid var(--border-color);"
+                     id="proj-row-${p.id}">
+                    <span style="cursor:grab; color:var(--text-secondary); font-size:18px; padding:0 2px; flex-shrink:0; user-select:none;" title="Drag to reorder">⠿</span>
                     <span style="flex:1; font-size:15px; font-weight:500; min-width:80px;" id="proj-name-${p.id}">${escapeHtml(p.name)}</span>
                     <input type="text" class="modal-input" id="proj-edit-${p.id}" value="${escapeHtml(p.name)}" style="display:none; flex:1; padding:6px 10px; font-size:14px; margin-bottom:0;" onkeydown="if(event.key==='Enter')saveProjectEdit(${p.id}); else if(event.key==='Escape')cancelProjectEdit(${p.id})">
                     <div style="display:flex; align-items:center; gap:5px; flex-shrink:0;">
-                        <input type="number" min="0" max="168" step="0.5" id="proj-target-${p.id}" value="${p.weeklyTargetHours || ''}" placeholder="—" style="width:58px; padding:5px 8px; font-size:13px; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-tertiary); color:var(--text-primary); text-align:center;" title="Weekly target hours" onblur="updateProjectTarget(${p.id}, this.value)" onkeydown="if(event.key==='Enter'){updateProjectTarget(${p.id},this.value);this.blur();event.preventDefault();}">
+                        <input type="number" min="0" max="168" step="0.5" id="proj-target-${p.id}" value="${p.weeklyTargetHours || ''}" placeholder="—" style="width:58px; padding:5px 8px; font-size:13px; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-tertiary); color:var(--text-primary); text-align:center;" title="Weekly target hours"
+                            oninput="renderProjectRegistryTotal()"
+                            onblur="updateProjectTarget(${p.id}, this.value)"
+                            onkeydown="if(event.key==='Enter'){updateProjectTarget(${p.id},this.value);this.blur();event.preventDefault();}">
                         <span style="font-size:12px; color:var(--text-secondary); white-space:nowrap;">hrs/wk</span>
                     </div>
                     <div style="position:relative; flex-shrink:0;">
@@ -6059,6 +6139,7 @@ function saveWeightAdjustments() {}
                         </div>
                     </div>
                 </div>`).join('');
+            renderProjectRegistryTotal();
         }
         function addProjectToRegistry() {
             const inp = document.getElementById('projectRegistryNewName');
@@ -6127,6 +6208,59 @@ function saveWeightAdjustments() {}
             p.weeklyTargetHours = isNaN(hrs) || hrs <= 0 ? 0 : hrs;
             p.updatedAt = Date.now();
             saveProjects();
+            renderProjectRegistryTotal();
+        }
+        function renderProjectRegistryTotal() {
+            const totalEl = document.getElementById('projectRegistryTotal');
+            if (!totalEl) return;
+            let total = 0;
+            projects.forEach(p => {
+                const input = document.getElementById(`proj-target-${p.id}`);
+                const val = input ? parseFloat(input.value) : (p.weeklyTargetHours || 0);
+                if (!isNaN(val) && val > 0) total += val;
+            });
+            if (total > 0) {
+                const totalStr = total % 1 === 0 ? total.toFixed(0) : total.toFixed(1);
+                totalEl.textContent = `Total: ${totalStr} hrs / week`;
+                totalEl.style.display = 'block';
+            } else {
+                totalEl.style.display = 'none';
+            }
+        }
+        function projDragStart(id) {
+            _dragSrcProjectId = id;
+            const row = document.getElementById(`proj-row-${id}`);
+            if (row) row.classList.add('proj-row-dragging');
+        }
+        function projDragOver(e, id) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            if (id === _dragSrcProjectId) return;
+            document.querySelectorAll('.proj-row-drag-over').forEach(el => el.classList.remove('proj-row-drag-over'));
+            const row = document.getElementById(`proj-row-${id}`);
+            if (row) row.classList.add('proj-row-drag-over');
+        }
+        function projDragLeave(e, id) {
+            const row = document.getElementById(`proj-row-${id}`);
+            if (row) row.classList.remove('proj-row-drag-over');
+        }
+        function projDrop(e, id) {
+            e.preventDefault();
+            const srcId = _dragSrcProjectId;
+            if (!srcId || srcId === id) return;
+            const srcIdx = projects.findIndex(p => p.id === srcId);
+            const dstIdx = projects.findIndex(p => p.id === id);
+            if (srcIdx === -1 || dstIdx === -1) return;
+            const [moved] = projects.splice(srcIdx, 1);
+            projects.splice(dstIdx, 0, moved);
+            saveProjects();
+            renderProjectRegistry();
+        }
+        function projDragEnd() {
+            _dragSrcProjectId = null;
+            document.querySelectorAll('.proj-row-dragging, .proj-row-drag-over').forEach(el => {
+                el.classList.remove('proj-row-dragging', 'proj-row-drag-over');
+            });
         }
         // ──────────────────────────────────────────────────────────────────
 
@@ -6189,11 +6323,11 @@ function saveWeightAdjustments() {}
         ];
 
         const ISLAND_LEVELS = [
-            { threshold: 0,    level: 1, name: 'Uncharted',      icon: '🌊' },
-            { threshold: 500,  level: 2, name: 'Sandy Shores',   icon: '🏖️' },
-            { threshold: 1500, level: 3, name: 'Jungle Outpost', icon: '🌿' },
-            { threshold: 3500, level: 4, name: 'Tropical Haven', icon: '🏝️' },
-            { threshold: 7000, level: 5, name: 'Paradise',       icon: '🌺' },
+            { threshold: 0,    level: 1, name: 'Uncharted',      icon: '🌊', unlocks: ['Palm Trees', 'Campfire', 'Well'] },
+            { threshold: 500,  level: 2, name: 'Sandy Shores',   icon: '🏖️', unlocks: ['Tent', 'Farm', 'Boat'] },
+            { threshold: 1500, level: 3, name: 'Jungle Outpost', icon: '🌿', unlocks: ['Cabin', 'Stone Firepit', 'Dock'] },
+            { threshold: 3500, level: 4, name: 'Tropical Haven', icon: '🏝️', unlocks: ['House', 'Harbor', 'Lighthouse'] },
+            { threshold: 7000, level: 5, name: 'Paradise',       icon: '🌺', unlocks: ['Villa', 'Marina', 'Bonfire'] },
         ];
 
         const islandSpots = {
