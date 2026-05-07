@@ -1723,6 +1723,78 @@ function showTodayCalendarDayDetail(dateStr) {
     detail.innerHTML = `<strong>${dayDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</strong><br>Sessions completed: ${daySessions}<br>Habit completion: ${habitPct}%<br>XP: ${calculateDayScore(dateStr).toFixed(1)}`;
 }
 
+function getWeeklyHoursPerProject() {
+    const now = new Date();
+    const dayOfWeek = now.getDay();
+    const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - daysToMonday);
+    monday.setHours(0, 0, 0, 0);
+    const mondayTs = monday.getTime();
+
+    const hoursMap = {};
+    sessionLogs.forEach(s => {
+        if (!s.completed || s.startTime < mondayTs) return;
+        const hrs = (s.endTime - s.startTime) / 3600000;
+        hoursMap[s.projectId] = (hoursMap[s.projectId] || 0) + hrs;
+    });
+    return hoursMap;
+}
+
+function renderWeeklyProjectProgress() {
+    const el = document.getElementById('weeklyProjectProgress');
+    if (!el) return;
+
+    const targetProjects = projects.filter(p => p.weeklyTargetHours > 0);
+    if (targetProjects.length === 0) {
+        el.style.display = 'none';
+        return;
+    }
+
+    const hoursMap = getWeeklyHoursPerProject();
+    const BLOCKS = 10;
+
+    const rows = targetProjects.map(p => {
+        const logged = hoursMap[p.id] || 0;
+        const target = p.weeklyTargetHours;
+        const ratio = logged / target;
+        const pct = Math.round(ratio * 100);
+        const filled = Math.min(BLOCKS, Math.round(ratio * BLOCKS));
+        const empty = BLOCKS - filled;
+        const bar = '█'.repeat(filled) + '░'.repeat(empty);
+
+        let color, statusText;
+        if (pct >= 100) {
+            color = pct === 100 ? '#1967d2' : '#ea580c';
+            const over = (logged - target).toFixed(1);
+            statusText = `+${over}h over`;
+        } else {
+            color = '#16a34a';
+            statusText = '';
+        }
+
+        const loggedStr = logged.toFixed(1);
+        const targetStr = target % 1 === 0 ? target.toFixed(0) : target.toFixed(1);
+
+        return `
+            <div style="margin-bottom:12px;">
+                <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:4px;">
+                    <span style="font-size:13px; font-weight:600;">${escapeHtml(p.name)}</span>
+                    <span style="font-size:12px; color:var(--text-secondary);">${loggedStr}h / ${targetStr}h${statusText ? ' · <span style="color:' + color + ';">' + statusText + '</span>' : ''}</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span style="font-family:monospace; font-size:16px; letter-spacing:1px; color:${color};">${bar}</span>
+                    <span style="font-size:12px; font-weight:700; color:${color};">${pct}%</span>
+                </div>
+            </div>`;
+    }).join('');
+
+    el.style.display = 'block';
+    el.innerHTML = `
+        <div style="font-weight:700; font-size:14px; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--border-color);">Weekly Project Progress</div>
+        ${rows}`;
+}
+
        function renderTodayView() {
     const today = new Date();
     const dateStr = getLocalDateStr(today, true);
@@ -1798,6 +1870,7 @@ function showTodayCalendarDayDetail(dateStr) {
             const focusXpEl = document.getElementById('todayFocusXp');
             if (focusXpEl) focusXpEl.textContent = todayXP.toFixed(1);
             refreshTotalXPDisplay();
+            renderWeeklyProjectProgress();
         }
 
         function renderTodayHabit(habit, dateStr) {
@@ -5921,9 +5994,13 @@ function saveWeightAdjustments() {}
                 return;
             }
             list.innerHTML = projects.map(p => `
-                <div style="display:flex; align-items:center; gap:8px; padding:10px 0; border-bottom:1px solid var(--border-color);" id="proj-row-${p.id}">
-                    <span style="flex:1; font-size:15px;" id="proj-name-${p.id}">${escapeHtml(p.name)}</span>
-                    <input type="text" class="modal-input" id="proj-edit-${p.id}" value="${escapeHtml(p.name)}" style="display:none; flex:1; padding:6px 10px; font-size:14px; margin-bottom:0;" onkeydown="if(event.key==='Enter')saveProjectEdit(${p.id})">
+                <div style="display:flex; align-items:center; gap:8px; padding:10px 0; border-bottom:1px solid var(--border-color); flex-wrap:wrap;" id="proj-row-${p.id}">
+                    <span style="flex:1; font-size:15px; min-width:80px;" id="proj-name-${p.id}">${escapeHtml(p.name)}</span>
+                    <input type="text" class="modal-input" id="proj-edit-${p.id}" value="${escapeHtml(p.name)}" style="display:none; flex:1; min-width:80px; padding:6px 10px; font-size:14px; margin-bottom:0;" onkeydown="if(event.key==='Enter')saveProjectEdit(${p.id})">
+                    <div style="display:flex; align-items:center; gap:4px; flex-shrink:0;">
+                        <input type="number" min="0" max="168" step="0.5" id="proj-target-${p.id}" value="${p.weeklyTargetHours || ''}" placeholder="—" style="width:56px; padding:4px 6px; font-size:13px; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-tertiary); color:var(--text-primary); text-align:center;" onchange="updateProjectTarget(${p.id}, this.value)" title="Weekly target hours">
+                        <span style="font-size:11px; color:var(--text-secondary); white-space:nowrap;">hrs/wk</span>
+                    </div>
                     <button class="btn-secondary" style="padding:4px 10px; font-size:12px;" id="proj-edit-btn-${p.id}" onclick="startEditProject(${p.id})">Edit</button>
                     <button class="btn-primary" style="padding:4px 10px; font-size:12px; display:none;" id="proj-save-btn-${p.id}" onclick="saveProjectEdit(${p.id})">Save</button>
                     <button class="btn-danger" style="padding:4px 10px; font-size:12px;" onclick="deleteProjectFromRegistry(${p.id})">Delete</button>
@@ -5968,6 +6045,13 @@ function saveWeightAdjustments() {}
             projects = projects.filter(p => p.id !== id);
             saveProjects();
             renderProjectRegistry();
+        }
+        function updateProjectTarget(id, value) {
+            const p = projects.find(p => p.id === id);
+            if (!p) return;
+            const hrs = parseFloat(value);
+            p.weeklyTargetHours = isNaN(hrs) || hrs <= 0 ? 0 : hrs;
+            saveProjects();
         }
         // ──────────────────────────────────────────────────────────────────
 
