@@ -211,7 +211,11 @@ let selectedProjectColor = '#1967d2';
             // Load projects — normalize legacy complex objects to simple {id, name}
             const _rawProjects = loadStoredJson('lifescore_projects_v4', null);
             if (_rawProjects && Array.isArray(_rawProjects) && _rawProjects.length > 0) {
-                projects = _rawProjects.map(p => ({ id: p.id, name: p.name }));
+                projects = _rawProjects.map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    ...(p.weeklyTargetHours > 0 ? { weeklyTargetHours: p.weeklyTargetHours } : {})
+                }));
             } else {
                 projects = [];
             }
