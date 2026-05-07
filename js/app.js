@@ -175,6 +175,9 @@ let selectedProjectColor = '#1967d2';
             last30Days.setDate(last30Days.getDate() - 30);
             document.getElementById('chartStartDate').value = last30Days.toISOString().split('T')[0];
             document.getElementById('chartEndDate').value = today.toISOString().split('T')[0];
+
+            // Init cloud sync after UI is ready
+            setTimeout(() => initCloudSync(), 800);
         }
 
         function loadStoredJson(key, fallback) {
@@ -6432,3 +6435,376 @@ function saveWeightAdjustments() {}
         } else {
             startApp();
         }
+
+// ========================================
+// CLOUD SYNC — JSONBin.io
+// ========================================
+
+const JSONBIN_API_KEY = '$2a$10$/U1aAgC.GO4kgdYusn7dzeyTPtT83Ijpv3mSg/1HbhEsI2Gyd63Si';
+const JSONBIN_BASE    = 'https://api.jsonbin.io/v3/b';
+const SYNC_KEYS = [
+    'lifescore_habits_v4',
+    'lifescore_habit_logs_v4',
+    'lifescore_session_logs_v4',
+    'lifescore_streaks_v4',
+    'lifescore_gems_v4',
+    'lifescore_projects_v4',
+    'lifescore_tools_v4',
+    'lifescore_tab_order_v4',
+    'lifescore_points_config_v4',
+    'lifescore_weekly_sessions_v4',
+    'lifescore_settings_v4',
+    'lifescore_notes_v4',
+    'lifescore_task_logs_v4',
+    'lifescore_tasks_v4',
+    'lifescore_island_v4',
+    'lifescore_world_v4',
+    'lifescore_daily_session_overrides_v4',
+];
+
+let _cloudSyncTimer = null;
+let _isSyncing = false;
+let _suppressSync = false;
+
+function getBinId() { return localStorage.getItem('lifescore_jsonbin_id_v4'); }
+function setBinId(id) { localStorage.setItem('lifescore_jsonbin_id_v4', id); }
+
+function setSyncStatus(status) {
+    const el = document.getElementById('syncStatusIndicator');
+    const btn = document.getElementById('syncHeaderBtn');
+    const map = {
+        syncing: { text: '⟳ Syncing…', color: '#f59e0b', bg: '#fffbeb', icon: '⟳' },
+        synced:  { text: '✓ Synced',   color: '#10b981', bg: '#ecfdf5', icon: '☁️' },
+        offline: { text: '⚡ Offline', color: '#6b7280', bg: '#f3f4f6', icon: '☁️' },
+        error:   { text: '✗ Sync failed', color: '#ef4444', bg: '#fef2f2', icon: '☁️' },
+    };
+    const cfg = map[status];
+    if (el && cfg) {
+        el.textContent = cfg.text;
+        el.style.color = cfg.color;
+        el.style.background = cfg.bg;
+        el.style.display = 'block';
+    } else if (el) {
+        el.style.display = 'none';
+    }
+    if (status === 'synced') {
+        setTimeout(() => { if (el) el.style.display = 'none'; }, 3000);
+    }
+}
+
+function getCloudBundle() {
+    const bundle = { lastModified: Date.now() };
+    SYNC_KEYS.forEach(key => {
+        const v = localStorage.getItem(key);
+        if (v !== null) bundle[key] = v;
+    });
+    return bundle;
+}
+
+function applyCloudBundle(bundle) {
+    if (!bundle || typeof bundle !== 'object') return;
+    // Temporarily disable the setItem intercept so applying cloud data
+    // doesn't schedule another push
+    _suppressSync = true;
+    SYNC_KEYS.forEach(key => {
+        if (bundle[key] != null) localStorage.setItem(key, bundle[key]);
+    });
+    if (bundle.lastModified) {
+        localStorage.setItem('lifescore_last_modified_v4', String(bundle.lastModified));
+    }
+    _suppressSync = false;
+}
+
+async function createJsonBin() {
+    setSyncStatus('syncing');
+    const bundle = getCloudBundle();
+    // Warn if bundle is over 500KB (JSONBin free limit is 512KB)
+    const bundleSize = new Blob([JSON.stringify(bundle)]).size;
+    console.log(`[Sync] Bundle size: ${(bundleSize/1024).toFixed(1)} KB`);
+    try {
+        const res = await fetch(JSONBIN_BASE, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Master-Key': JSONBIN_API_KEY,
+                'X-Bin-Name': 'LifeScore-Data',
+                'X-Bin-Private': 'true',
+            },
+            body: JSON.stringify(bundle),
+        });
+        if (!res.ok) {
+            const errBody = await res.text().catch(() => '');
+            throw new Error(`HTTP ${res.status}: ${errBody}`);
+        }
+        const data = await res.json();
+        const binId = data.metadata?.id;
+        if (!binId) throw new Error('No bin ID returned');
+        setBinId(binId);
+        localStorage.setItem('lifescore_last_modified_v4', String(bundle.lastModified));
+        setSyncStatus('synced');
+        showBinCreatedModal(binId);
+        return binId;
+    } catch (e) {
+        console.error('[Sync] Create error:', e.message);
+        setSyncStatusError(e.message);
+        return null;
+    }
+}
+
+async function pushToCloud() {
+    const binId = getBinId();
+    if (!binId || _isSyncing) return;
+    _isSyncing = true;
+    setSyncStatus('syncing');
+    const ts = Date.now();
+    _suppressSync = true;
+    localStorage.setItem('lifescore_last_modified_v4', String(ts));
+    _suppressSync = false;
+    const bundle = getCloudBundle();
+    bundle.lastModified = ts;
+    try {
+        const res = await fetch(`${JSONBIN_BASE}/${binId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Master-Key': JSONBIN_API_KEY,
+            },
+            body: JSON.stringify(bundle),
+        });
+        if (!res.ok) {
+            const errBody = await res.text().catch(() => '');
+            throw new Error(`HTTP ${res.status}: ${errBody}`);
+        }
+        setSyncStatus('synced');
+    } catch (e) {
+        console.error('[Sync] Push error:', e.message);
+        setSyncStatusError(e.message);
+    } finally {
+        _isSyncing = false;
+    }
+}
+
+async function pullFromCloud() {
+    const binId = getBinId();
+    if (!binId) return false;
+    setSyncStatus('syncing');
+    try {
+        const res = await fetch(`${JSONBIN_BASE}/${binId}/latest`, {
+            headers: { 'X-Master-Key': JSONBIN_API_KEY },
+        });
+        if (!res.ok) {
+            const errBody = await res.text().catch(() => '');
+            throw new Error(`HTTP ${res.status}: ${errBody}`);
+        }
+        const data = await res.json();
+        const cloudBundle = data.record;
+        if (!cloudBundle) throw new Error('Empty record');
+
+        const localTs  = parseInt(localStorage.getItem('lifescore_last_modified_v4') || '0', 10);
+        const cloudTs  = cloudBundle.lastModified || 0;
+
+        if (cloudTs > localTs) {
+            applyCloudBundle(cloudBundle);
+            setSyncStatus('synced');
+            return true;
+        }
+        setSyncStatus('synced');
+        return false;
+    } catch (e) {
+        console.error('[Sync] Pull error:', e.message);
+        setSyncStatusError(e.message);
+        return false;
+    }
+}
+
+function setSyncStatusError(msg) {
+    const el = document.getElementById('syncStatusIndicator');
+    if (!el) return;
+    // Extract the key part: HTTP 401, 403, network error etc.
+    let friendly = '✗ Sync failed';
+    if (msg.includes('401')) friendly = '✗ Invalid API key (401)';
+    else if (msg.includes('403')) friendly = '✗ Access denied (403)';
+    else if (msg.includes('404')) friendly = '✗ Bin not found (404)';
+    else if (msg.includes('429')) friendly = '✗ Rate limited (429)';
+    else if (msg.includes('413') || msg.includes('payload')) friendly = '✗ Data too large';
+    else if (!navigator.onLine) friendly = '⚡ Offline';
+    el.textContent = friendly;
+    el.style.color = navigator.onLine ? '#ef4444' : '#6b7280';
+    el.style.background = navigator.onLine ? '#fef2f2' : '#f3f4f6';
+    el.style.display = 'block';
+    console.error('[Sync] Full error:', msg);
+}
+
+function scheduleCloudSync() {
+    if (!getBinId() || _suppressSync) return;
+    if (_cloudSyncTimer) clearTimeout(_cloudSyncTimer);
+    _cloudSyncTimer = setTimeout(() => {
+        _cloudSyncTimer = null;
+        pushToCloud();
+    }, 3000);
+}
+
+async function initCloudSync() {
+    // Intercept all localStorage writes to trigger debounced cloud push
+    const _origSetItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function(key, value) {
+        _origSetItem.call(this, key, value);
+        if (this === localStorage &&
+            !_suppressSync &&
+            key.startsWith('lifescore_') &&
+            key !== 'lifescore_jsonbin_id_v4' &&
+            key !== 'lifescore_last_modified_v4' &&
+            key !== 'lifescore_current_tab_v4' &&
+            key !== 'lifescore_day_cutoff_v4' &&
+            key !== 'lifescore_today_view_mode_v4') {
+            scheduleCloudSync();
+        }
+    };
+
+    const binId = getBinId();
+    if (!binId) {
+        showSyncSetupModal();
+        return;
+    }
+
+    // Pull cloud data and reload app if newer
+    const updated = await pullFromCloud();
+    if (updated) {
+        loadData();
+        loadIslandData();
+        loadWorldProgress();
+        migrateData();
+        recomputeAllStreaks();
+        checkWorldIslandUnlocks(false);
+        applySettings();
+        renderTabs();
+        updateProjectSelects();
+        renderTodayView();
+        renderHabitLog();
+        if (settings.gamificationEnabled) calculateScores();
+    }
+}
+
+// ── Modal helpers ─────────────────────────────────────────────────────────────
+
+function showSyncSetupModal() {
+    document.getElementById('syncSetupModal')?.classList.add('active');
+}
+function closeSyncSetupModal() {
+    document.getElementById('syncSetupModal')?.classList.remove('active');
+}
+
+function showBinCreatedModal(binId) {
+    const modal = document.getElementById('binCreatedModal');
+    if (!modal) return;
+    const el = document.getElementById('binCreatedId');
+    if (el) el.textContent = binId;
+    modal.classList.add('active');
+}
+function closeBinCreatedModal() {
+    document.getElementById('binCreatedModal')?.classList.remove('active');
+}
+
+function openSyncSettings() {
+    const modal = document.getElementById('syncSettingsModal');
+    if (!modal) return;
+    const binId = getBinId();
+    const content = document.getElementById('syncSettingsContent');
+    const notConf = document.getElementById('syncNotConfigured');
+    const idEl = document.getElementById('syncCurrentBinId');
+    if (binId) {
+        if (content) content.style.display = 'block';
+        if (notConf) notConf.style.display = 'none';
+        if (idEl) idEl.textContent = binId;
+    } else {
+        if (content) content.style.display = 'none';
+        if (notConf) notConf.style.display = 'block';
+    }
+    modal.classList.add('active');
+}
+function closeSyncSettings() {
+    document.getElementById('syncSettingsModal')?.classList.remove('active');
+}
+
+async function syncSetupCreateNew() {
+    closeSyncSetupModal();
+    await createJsonBin();
+}
+
+async function syncSetupEnterExisting() {
+    const input = document.getElementById('existingBinIdInput');
+    const binId = (input?.value || '').trim();
+    if (!binId) { alert('Please enter a Bin ID.'); return; }
+    setBinId(binId);
+    closeSyncSetupModal();
+    setSyncStatus('syncing');
+    const updated = await pullFromCloud();
+    if (updated) {
+        loadData();
+        loadIslandData();
+        loadWorldProgress();
+        migrateData();
+        recomputeAllStreaks();
+        checkWorldIslandUnlocks(false);
+        applySettings();
+        renderTabs();
+        updateProjectSelects();
+        renderTodayView();
+        renderHabitLog();
+        if (settings.gamificationEnabled) calculateScores();
+    }
+}
+
+function switchBinDevice() {
+    closeSyncSettings();
+    const input = document.getElementById('existingBinIdInput');
+    if (input) input.value = '';
+    document.getElementById('syncSetupModal')?.classList.add('active');
+}
+
+function disconnectSync() {
+    if (!confirm('Disconnect cloud sync? Your local data stays. You can reconnect anytime.')) return;
+    _suppressSync = true;
+    localStorage.removeItem('lifescore_jsonbin_id_v4');
+    _suppressSync = false;
+    closeSyncSettings();
+    setSyncStatus('offline');
+    setTimeout(() => { const el = document.getElementById('syncStatusIndicator'); if (el) el.style.display = 'none'; }, 3000);
+}
+
+function copyBinId() {
+    const text = document.getElementById('binCreatedId')?.textContent || getBinId() || '';
+    navigator.clipboard?.writeText(text).then(() => {
+        const btn = document.getElementById('copyBinIdBtn');
+        if (btn) { const orig = btn.textContent; btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = orig; }, 2000); }
+    });
+}
+
+async function syncNow() {
+    closeSyncSettings();
+    await pushToCloud();
+}
+
+// Paste this in browser console to test connectivity:
+// testJsonBinConnection().then(r => console.log(r))
+async function testJsonBinConnection() {
+    try {
+        const res = await fetch(JSONBIN_BASE, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Master-Key': JSONBIN_API_KEY,
+                'X-Bin-Name': 'LifeScore-Test',
+                'X-Bin-Private': 'true',
+            },
+            body: JSON.stringify({ test: true, ts: Date.now() }),
+        });
+        const body = await res.text();
+        console.log(`[SyncTest] Status: ${res.status}`);
+        console.log(`[SyncTest] Response: ${body}`);
+        return { status: res.status, ok: res.ok, body };
+    } catch (e) {
+        console.error('[SyncTest] Network error:', e.message);
+        return { error: e.message };
+    }
+}
