@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lifescore-v1';
+const CACHE_NAME = 'lifescore-v2';
 const ASSETS = ['.', 'index.html', 'css/styles.css', 'js/app.js'];
 
 self.addEventListener('install', event => {
@@ -16,7 +16,10 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-    if (event.request.url.includes('api.jsonbin.io') || event.request.url.includes('cdn.jsdelivr.net')) return;
+    // Let Firebase and CDN requests go directly to network
+    if (event.request.url.includes('firebasedatabase.app') ||
+        event.request.url.includes('gstatic.com') ||
+        event.request.url.includes('googleapis.com')) return;
     event.respondWith(
         caches.match(event.request).then(cached => cached || fetch(event.request))
     );

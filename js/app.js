@@ -6441,17 +6441,8 @@ function saveWeightAdjustments() {}
 
 // ========================================
 // CLOUD SYNC — Firebase Realtime Database
+// (firebase app + db initialized in index.html before this script)
 // ========================================
-
-const firebaseConfig = {
-    apiKey: "AIzaSyDkdT8zwe1O5NKqbQTmRfMJU0HPtac5Dps",
-    authDomain: "lifescore-f6445.firebaseapp.com",
-    databaseURL: "https://lifescore-f6445-default-rtdb.asia-southeast1.firebasedatabase.app",
-    projectId: "lifescore-f6445",
-    storageBucket: "lifescore-f6445.firebasestorage.app",
-    messagingSenderId: "700922981273",
-    appId: "1:700922981273:web:0533963f5fcf2dd17a0108"
-};
 
 const DB_PATH = 'users/default/data';
 
@@ -6475,19 +6466,10 @@ const SYNC_KEYS = [
     'lifescore_daily_session_overrides_v4',
 ];
 
-let _db = null;
 let _cloudSyncTimer = null;
 let _isSyncing = false;
 let _suppressSync = false;
 let _realtimeListenerActive = false;
-
-function getDb() {
-    if (!_db) {
-        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-        _db = firebase.database();
-    }
-    return _db;
-}
 
 function setSyncStatus(status) {
     const el = document.getElementById('syncStatusIndicator');
@@ -6542,7 +6524,7 @@ async function pushToCloud() {
     const bundle = getCloudBundle();
     bundle.lastModified = ts;
     try {
-        await getDb().ref(DB_PATH).set(bundle);
+        await db.ref(DB_PATH).set(bundle);
         setSyncStatus('synced');
     } catch (e) {
         console.error('[Sync] Push error:', e.message);
@@ -6555,7 +6537,7 @@ async function pushToCloud() {
 async function pullFromCloud() {
     setSyncStatus('syncing');
     try {
-        const snap = await getDb().ref(DB_PATH).once('value');
+        const snap = await db.ref(DB_PATH).once('value');
         const cloudBundle = snap.val();
         if (!cloudBundle) { setSyncStatus('synced'); return false; }
         const localTs = parseInt(localStorage.getItem('lifescore_last_modified_v4') || '0', 10);
@@ -6586,7 +6568,7 @@ function scheduleCloudSync() {
 function startRealtimeListener() {
     if (_realtimeListenerActive) return;
     _realtimeListenerActive = true;
-    getDb().ref(DB_PATH).on('value', snap => {
+    db.ref(DB_PATH).on('value', snap => {
         if (_suppressSync || _isSyncing) return;
         const cloudBundle = snap.val();
         if (!cloudBundle) return;
