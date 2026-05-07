@@ -1499,6 +1499,10 @@ function toggleActiveSessionMinimize() {
         document.addEventListener('click', function(e) {
             const wrap = document.getElementById('helpMenuWrap');
             if (wrap && !wrap.contains(e.target)) closeHelpMenu();
+            // Close any open project ⋮ menus when clicking outside
+            if (!e.target.closest('[id^="proj-menu-"]') && !e.target.closest('button[onclick^="toggleProjectMenu"]')) {
+                closeAllProjectMenus();
+            }
         });
 
         document.addEventListener('click', function(e) {
@@ -1896,7 +1900,18 @@ function renderWeeklyProjectProgress() {
         function renderTodayHabit(habit, dateStr) {
             const log = habitLogs[habit.id]?.[dateStr];
             const state = getHabitLogState(log);
-            const value = log?.value || 0;
+
+            // For weekly measurable habits use the full week total, not today's value
+            let value;
+            if (habit.period === 'weekly' && habit.measurable) {
+                const { weekStart } = getWeekBoundary();
+                value = 0;
+                for (let d = new Date(weekStart); d.getTime() <= Date.now(); d.setDate(d.getDate() + 1)) {
+                    value += habitLogs[habit.id]?.[getLocalDateStr(d, true)]?.value || 0;
+                }
+            } else {
+                value = log?.value || 0;
+            }
             const difficultyXP = getHabitXP(habit);
             const diffLabel = (habit.difficulty || 'medium').toLowerCase();
             const diffDisplay = diffLabel[0].toUpperCase() + diffLabel.slice(1);
@@ -2347,7 +2362,11 @@ function renderWeeklyProjectProgress() {
             const yesno = document.getElementById('todayHabitYesNoActions');
             const meas  = document.getElementById('todayHabitMeasurableActions');
 
-            if (habit.measurable) {
+            if (habit.measurable && habit.period === 'weekly') {
+                // Weekly measurable habits: use the same +/− modal as the Habits tab
+                incrementWeeklyHabit(habitId);
+                return;
+            } else if (habit.measurable) {
                 yesno.style.display = 'none';
                 meas.style.display  = 'block';
                 const currentVal = habitLogs[habitId]?.[dateStr]?.value || '';
@@ -4080,6 +4099,11 @@ function adjustWeeklyHabit(change) {
     saveHabitLogs();
     const _awh = habits.find(h => String(h.id) === String(currentWeeklyHabitId));
     if (_awh) recomputeStreakFromHistory(_awh);
+
+    // Award XP on the first completion of the day (state blank→done)
+    if (change === 1 && currentValue === 0 && _awh) {
+        showXpGainPopup(getHabitXP(_awh));
+    }
 
     // Recalculate total
     let weekTotal = 0;
@@ -6004,6 +6028,7 @@ function saveWeightAdjustments() {}
             document.getElementById('projectRegistryModal').classList.add('active');
         }
         function closeProjectRegistry() {
+            closeAllProjectMenus();
             document.getElementById('projectRegistryModal').classList.remove('active');
             const inp = document.getElementById('projectRegistryNewName');
             if (inp) inp.value = '';
@@ -6018,18 +6043,19 @@ function saveWeightAdjustments() {}
                 return;
             }
             list.innerHTML = projects.map(p => `
-                <div style="display:flex; align-items:center; gap:12px; padding:14px 4px; border-bottom:1px solid var(--border-color); flex-wrap:wrap;" id="proj-row-${p.id}">
-                    <span style="flex:1; font-size:15px; font-weight:500; min-width:100px;" id="proj-name-${p.id}">${escapeHtml(p.name)}</span>
-                    <input type="text" class="modal-input" id="proj-edit-${p.id}" value="${escapeHtml(p.name)}" style="display:none; flex:1; min-width:100px; padding:6px 10px; font-size:14px; margin-bottom:0;" onkeydown="if(event.key==='Enter')saveProjectEdit(${p.id})">
-                    <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
-                        <input type="number" min="0" max="168" step="0.5" id="proj-target-${p.id}" value="${p.weeklyTargetHours || ''}" placeholder="—" style="width:60px; padding:5px 8px; font-size:13px; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-tertiary); color:var(--text-primary); text-align:center;" onkeydown="if(event.key==='Enter'){saveProjectTarget(${p.id});event.preventDefault();}" onblur="saveProjectTarget(${p.id})" title="Weekly target hours (hrs/week)">
+                <div style="display:flex; align-items:center; gap:12px; padding:14px 4px; border-bottom:1px solid var(--border-color);" id="proj-row-${p.id}">
+                    <span style="flex:1; font-size:15px; font-weight:500; min-width:80px;" id="proj-name-${p.id}">${escapeHtml(p.name)}</span>
+                    <input type="text" class="modal-input" id="proj-edit-${p.id}" value="${escapeHtml(p.name)}" style="display:none; flex:1; padding:6px 10px; font-size:14px; margin-bottom:0;" onkeydown="if(event.key==='Enter')saveProjectEdit(${p.id}); else if(event.key==='Escape')cancelProjectEdit(${p.id})">
+                    <div style="display:flex; align-items:center; gap:5px; flex-shrink:0;">
+                        <input type="number" min="0" max="168" step="0.5" id="proj-target-${p.id}" value="${p.weeklyTargetHours || ''}" placeholder="—" style="width:58px; padding:5px 8px; font-size:13px; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-tertiary); color:var(--text-primary); text-align:center;" title="Weekly target hours" onblur="updateProjectTarget(${p.id}, this.value)" onkeydown="if(event.key==='Enter'){updateProjectTarget(${p.id},this.value);this.blur();event.preventDefault();}">
                         <span style="font-size:12px; color:var(--text-secondary); white-space:nowrap;">hrs/wk</span>
-                        <button onclick="saveProjectTarget(${p.id})" id="proj-target-save-${p.id}" style="padding:4px 10px; font-size:12px; background:var(--bg-tertiary); border:1px solid var(--border-color); border-radius:6px; cursor:pointer; color:var(--text-secondary); white-space:nowrap;" title="Save target">Save</button>
                     </div>
-                    <div style="display:flex; gap:8px; flex-shrink:0;">
-                        <button class="btn-secondary" style="padding:6px 14px; font-size:13px;" id="proj-edit-btn-${p.id}" onclick="startEditProject(${p.id})">Edit</button>
-                        <button class="btn-primary" style="padding:6px 14px; font-size:13px; display:none;" id="proj-save-btn-${p.id}" onclick="saveProjectEdit(${p.id})">Save</button>
-                        <button class="btn-danger" style="padding:6px 14px; font-size:13px;" onclick="deleteProjectFromRegistry(${p.id})">Delete</button>
+                    <div style="position:relative; flex-shrink:0;">
+                        <button onclick="toggleProjectMenu(${p.id})" style="background:none; border:1px solid transparent; border-radius:6px; cursor:pointer; font-size:20px; color:var(--text-secondary); padding:2px 8px; line-height:1.2;" title="Options">⋮</button>
+                        <div id="proj-menu-${p.id}" style="display:none; position:absolute; right:0; top:100%; margin-top:4px; background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:8px; box-shadow:0 4px 16px var(--shadow); z-index:300; min-width:130px; overflow:hidden;">
+                            <button onclick="startEditProject(${p.id})" style="display:block; width:100%; text-align:left; padding:10px 14px; font-size:14px; background:none; border:none; border-bottom:1px solid var(--border-color); cursor:pointer; color:var(--text-primary);">✏️ Edit Name</button>
+                            <button onclick="deleteProjectFromRegistry(${p.id})" style="display:block; width:100%; text-align:left; padding:10px 14px; font-size:14px; background:none; border:none; cursor:pointer; color:#dc2626;">🗑 Delete</button>
+                        </div>
                     </div>
                 </div>`).join('');
         }
@@ -6042,18 +6068,33 @@ function saveWeightAdjustments() {}
             if (inp) inp.value = '';
             renderProjectRegistry();
         }
+        function toggleProjectMenu(id) {
+            const menu = document.getElementById(`proj-menu-${id}`);
+            const isOpen = menu && menu.style.display !== 'none';
+            closeAllProjectMenus();
+            if (!isOpen && menu) menu.style.display = 'block';
+        }
+        function closeAllProjectMenus() {
+            document.querySelectorAll('[id^="proj-menu-"]').forEach(el => { el.style.display = 'none'; });
+        }
         function startEditProject(id) {
+            closeAllProjectMenus();
             const nameEl = document.getElementById(`proj-name-${id}`);
             const editInput = document.getElementById(`proj-edit-${id}`);
-            const editBtn = document.getElementById(`proj-edit-btn-${id}`);
-            const saveBtn = document.getElementById(`proj-save-btn-${id}`);
             if (!nameEl || !editInput) return;
             nameEl.style.display = 'none';
             editInput.style.display = 'block';
-            if (editBtn) editBtn.style.display = 'none';
-            if (saveBtn) saveBtn.style.display = '';
             editInput.focus();
             editInput.select();
+        }
+        function cancelProjectEdit(id) {
+            const p = projects.find(p => p.id === id);
+            const nameEl = document.getElementById(`proj-name-${id}`);
+            const editInput = document.getElementById(`proj-edit-${id}`);
+            if (!nameEl || !editInput) return;
+            if (p) editInput.value = p.name;
+            nameEl.style.display = '';
+            editInput.style.display = 'none';
         }
         function saveProjectEdit(id) {
             const editInput = document.getElementById(`proj-edit-${id}`);
@@ -6065,9 +6106,13 @@ function saveWeightAdjustments() {}
             sessionLogs.forEach(s => { if (s.projectId === id) s.projectName = name; });
             saveProjects();
             saveSessionLogs();
-            renderProjectRegistry();
+            // Update in-place — avoid full re-render which would lose unsaved target inputs
+            const nameEl = document.getElementById(`proj-name-${id}`);
+            if (nameEl) { nameEl.textContent = name; nameEl.style.display = ''; }
+            if (editInput) editInput.style.display = 'none';
         }
         function deleteProjectFromRegistry(id) {
+            closeAllProjectMenus();
             if (!confirm('Delete this project? Sessions using it keep their recorded name.')) return;
             projects = projects.filter(p => p.id !== id);
             saveProjects();
@@ -6079,19 +6124,6 @@ function saveWeightAdjustments() {}
             const hrs = parseFloat(value);
             p.weeklyTargetHours = isNaN(hrs) || hrs <= 0 ? 0 : hrs;
             saveProjects();
-        }
-        function saveProjectTarget(id) {
-            const input = document.getElementById(`proj-target-${id}`);
-            if (!input) return;
-            updateProjectTarget(id, input.value);
-            const btn = document.getElementById(`proj-target-save-${id}`);
-            if (btn) {
-                const prev = btn.textContent;
-                btn.textContent = '✓ Saved';
-                btn.style.color = '#16a34a';
-                btn.style.borderColor = '#16a34a';
-                setTimeout(() => { btn.textContent = prev; btn.style.color = ''; btn.style.borderColor = ''; }, 1500);
-            }
         }
         // ──────────────────────────────────────────────────────────────────
 
