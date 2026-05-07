@@ -1497,6 +1497,21 @@ function toggleActiveSessionMinimize() {
             if (wrap && !wrap.contains(e.target)) closeHelpMenu();
         });
 
+        document.addEventListener('click', function(e) {
+            const view = document.getElementById('activeSessionView');
+            if (!view || view.style.display === 'none') return;
+            if (view.contains(e.target)) return;
+            if (window.innerWidth <= 768) {
+                if (view.classList.contains('mobile-expanded')) {
+                    view.classList.remove('mobile-expanded');
+                }
+            } else {
+                if (!sessionMinimized) {
+                    toggleActiveSessionMinimize();
+                }
+            }
+        });
+
         // ========================================
         // TAB SYSTEM WITH DRAG & DROP
         // ========================================
@@ -4740,6 +4755,69 @@ dateLabels.push(labelDate.toLocaleDateString('en-US', { month: 'short', day: 'nu
     
     document.getElementById('sessionAnalyticsByProject').innerHTML = projectList || '<div style="color: var(--text-secondary); font-size: 14px;">No sessions recorded</div>';
 
+    renderNotesLog(startDate, endDate);
+}
+
+function renderNotesLog(startDate, endDate) {
+    const container = document.getElementById('notesLogContainer');
+    if (!container) return;
+
+    const entries = [];
+
+    // Session notes
+    sessionLogs.forEach(s => {
+        if (!s.notes || !s.notes.trim() || !s.completed) return;
+        const d = new Date(s.startTime);
+        if (d < startDate || d > endDate) return;
+        entries.push({
+            date: d,
+            dateStr: getLocalDateStr(d, true),
+            type: 'session',
+            label: escapeHtml(s.projectName || 'Session'),
+            note: s.notes.trim()
+        });
+    });
+
+    // Habit notes
+    habits.forEach(h => {
+        const logs = habitLogs[h.id];
+        if (!logs) return;
+        Object.entries(logs).forEach(([dateStr, log]) => {
+            if (!log?.note || !log.note.trim()) return;
+            const d = new Date(dateStr + 'T12:00:00');
+            if (d < startDate || d > endDate) return;
+            entries.push({
+                date: d,
+                dateStr,
+                type: 'habit',
+                label: escapeHtml(h.name),
+                note: log.note.trim()
+            });
+        });
+    });
+
+    if (entries.length === 0) {
+        container.innerHTML = '<div style="color:var(--text-secondary); font-size:14px;">No notes in this period.</div>';
+        return;
+    }
+
+    entries.sort((a, b) => b.date - a.date);
+
+    container.innerHTML = entries.map(e => {
+        const badge = e.type === 'session'
+            ? `<span style="font-size:11px; font-weight:600; padding:2px 7px; border-radius:10px; background:rgba(25,103,210,0.12); color:#1967d2;">Session</span>`
+            : `<span style="font-size:11px; font-weight:600; padding:2px 7px; border-radius:10px; background:rgba(13,148,136,0.12); color:#0d9488;">Habit</span>`;
+        const displayDate = new Date(e.dateStr + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        return `
+            <div style="padding:12px 14px; background:var(--bg-tertiary); border-radius:8px; border-left:3px solid ${e.type === 'session' ? '#1967d2' : '#0d9488'};">
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+                    ${badge}
+                    <span style="font-weight:600; font-size:13px;">${e.label}</span>
+                    <span style="font-size:12px; color:var(--text-secondary); margin-left:auto;">${displayDate}</span>
+                </div>
+                <div style="font-size:13px; color:var(--text-primary); line-height:1.5; white-space:pre-wrap;">${escapeHtml(e.note)}</div>
+            </div>`;
+    }).join('');
 }
         
         function calculateScores() {
