@@ -1,0 +1,1421 @@
+﻿<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LifeScore - Personal Productivity Hub</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <script>
+        (function(){
+            var s=localStorage.getItem('lifescore_settings_v4');
+            if(s){try{var t=JSON.parse(s).theme;if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}}
+            document.addEventListener('DOMContentLoaded',function(){
+                document.body.classList.add('no-transition');
+                requestAnimationFrame(function(){requestAnimationFrame(function(){document.body.classList.remove('no-transition');});});
+            });
+        })();
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="top-header">
+        <div class="app-logo" onclick="switchTab('today')">
+            <span>🎯</span> 
+            <span id="appName">LifeScore</span>
+        </div>
+        <div class="header-actions">
+            <div id="levelIslandBadge" onclick="openWorldMap()" title="Open World Map">
+                <span id="levelBadgeText">Lv.1</span>
+                <span id="islandBadgeText">Sandy Shores 🌴</span>
+            </div>
+            <span id="totalXpDisplay" style="font-size:13px; font-weight:700; color:var(--accent-color); padding:6px 12px; background:var(--bg-tertiary); border-radius:6px;">Total XP: 0</span>
+            <div class="help-menu-wrap" id="helpMenuWrap">
+                <button class="icon-btn-header" onclick="toggleHelpMenu(event)" title="Help">?</button>
+                <div class="help-menu-dropdown" id="helpMenuDropdown">
+                    <button class="help-menu-item" onclick="closeHelpMenu(); document.getElementById('islandRulesModal').classList.add('active')">🏝️ How Island Works</button>
+                    <button class="help-menu-item" onclick="closeHelpMenu(); document.getElementById('rulesModal').classList.add('active')">📖 How XP Works</button>
+                    <button class="help-menu-item" onclick="closeHelpMenu(); document.getElementById('streakRulesModal').classList.add('active')">🔥 Streaks &amp; Recover Gems</button>
+                </div>
+            </div>
+            <button class="icon-btn-header" onclick="openSettings()" title="Settings">⚙️</button>
+            <button class="icon-btn-header" onclick="toggleTheme()" id="themeBtn" title="Toggle theme">🌙</button>
+        </div>
+    </div>
+
+    <div class="app-body">
+        <div class="left-sidebar" id="leftSidebar">
+            <div class="sidebar-nav" id="navContainer"></div>
+        </div>
+        <div class="main-content-area">
+
+    <!-- Today Tab (Default) -->
+    <div class="tab-content active" id="todayTab">
+        <div class="container" style="display: block;">
+            <div class="main-content">
+                <div class="content-header">
+                    <h1 class="content-title">📅 Today</h1>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span id="todayDate" style="color: var(--text-secondary);"></span>
+                        <button class="btn-secondary" onclick="setTodayViewMode('list')" id="todayListViewBtn">List View</button>
+                        <button class="btn-secondary" onclick="setTodayViewMode('calendar')" id="todayCalendarViewBtn">Calendar View</button>
+                    </div>
+                </div>
+
+                <div id="todayCalendarView" style="display:none; margin-bottom:16px;">
+                    <div id="todayCalendarGrid" style="display:grid; grid-template-columns: repeat(7, minmax(0,1fr)); gap:6px;"></div>
+                    <div id="todayCalendarDayDetail" style="margin-top:12px; padding:12px; border:1px solid var(--border-color); border-radius:8px; color:var(--text-secondary);">Click a day to view details.</div>
+                </div>
+
+                <div id="todayListView">
+
+                <!-- Today Stats Bar -->
+                <div class="today-stats-bar">
+                    <div class="today-stat-item">
+                        <span class="today-stat-label">Focus</span>
+                        <span class="today-stat-value" id="todayCompletedSessions">0h</span>
+                    </div>
+                    <div class="today-stat-item">
+                        <span class="today-stat-label">XP Earned</span>
+                        <span class="today-stat-value" style="color:var(--accent-color);" id="todayFocusXp">0</span>
+                    </div>
+                    <div class="today-stat-item" style="margin-left:auto;">
+                        <span class="today-stat-label" id="todayHabitsCount">0 habits</span>
+                    </div>
+                    <div class="today-gem-stat">
+                        <span class="today-gem-label">Gems</span>
+                        <span class="today-gem-value">&#x1F48E; <span id="todayGemCount">0</span></span>
+                    </div>
+                </div>
+                <!-- Unified grid: Focus tile first, then habit tiles in habits-page order -->
+                <div class="today-habits-grid" id="todayMainGrid"></div>
+                <span id="todayPlannedSessions" style="display:none;"></span>
+                <span id="todaySessionCount" style="display:none;"></span>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Habits Tab -->
+    <div class="tab-content" id="habitsTab">
+        <div class="container">
+            
+
+            <div class="main-content">
+                <div class="content-header">
+                    <h1 class="content-title">Habit Tracker</h1>
+                </div>
+                <div class="week-selector">
+                    <button onclick="changeWeek(-1)">← Previous Week</button>
+                    <span id="currentWeekDisplay"></span>
+                    <button onclick="changeWeek(1)">Next Week →</button>
+                </div>
+                <div class="habit-log-grid" id="habitLogGrid"></div>
+                <div id="habitHeaderFilterMenus">
+                    <div class="habit-filter-menu" id="habitFilterNameMenu">
+                        <label><input type="radio" name="habitNameSort" value="az" onchange="setHabitNameSort('az')"> Sort A-Z</label>
+                        <label><input type="radio" name="habitNameSort" value="za" onchange="setHabitNameSort('za')"> Sort Z-A</label>
+                        <input type="text" id="habitFilterNameSearch" placeholder="Search by name..." oninput="applyHabitFilters()">
+                        <button class="btn-secondary" style="width:100%;" onclick="clearHabitFilter('name')">Clear filter</button>
+                    </div>
+                    <div class="habit-filter-menu" id="habitFilterTimeMenu">
+                        <label><input type="checkbox" id="habitFilterTimeNoTime" onchange="applyHabitFilters()"> No time set</label>
+                        <label><input type="checkbox" id="habitFilterTimeMorning" onchange="applyHabitFilters()"> Morning (before 12:00)</label>
+                        <label><input type="checkbox" id="habitFilterTimeAfternoon" onchange="applyHabitFilters()"> Afternoon (12:00-17:00)</label>
+                        <label><input type="checkbox" id="habitFilterTimeEvening" onchange="applyHabitFilters()"> Evening (after 17:00)</label>
+                        <select id="habitFilterTimeSort" onchange="applyHabitFilters()">
+                            <option value="none">No sort</option>
+                            <option value="earliest">Sort: Earliest first</option>
+                            <option value="latest">Sort: Latest first</option>
+                        </select>
+                        <button class="btn-secondary" style="width:100%;" onclick="clearHabitFilter('time')">Clear filter</button>
+                    </div>
+                    <div class="habit-filter-menu" id="habitFilterProjectMenu">
+                        <div id="habitFilterProjectList" style="max-height: 220px; overflow: auto; margin-bottom: 8px;"></div>
+                        <button class="btn-secondary" style="width:100%;" onclick="clearHabitFilter('project')">Clear filter</button>
+                    </div>
+                    <div class="habit-filter-menu" id="habitFilterTypeMenu">
+                        <label><input type="checkbox" id="habitFilterTypeDailyYesNo" onchange="applyHabitFilters()"> Daily yes/no</label>
+                        <label><input type="checkbox" id="habitFilterTypeWeeklyYesNo" onchange="applyHabitFilters()"> Weekly yes/no</label>
+                        <label><input type="checkbox" id="habitFilterTypeDailyMeasurable" onchange="applyHabitFilters()"> Daily measurable</label>
+                        <label><input type="checkbox" id="habitFilterTypeWeeklyMeasurable" onchange="applyHabitFilters()"> Weekly measurable</label>
+                        <label><input type="checkbox" id="habitFilterTypePositive" onchange="applyHabitFilters()"> Positive habits</label>
+                        <label><input type="checkbox" id="habitFilterTypeNegative" onchange="applyHabitFilters()"> Negative habits</label>
+                        <button class="btn-secondary" style="width:100%;" onclick="clearHabitFilter('type')">Clear filter</button>
+                    </div>
+                </div>
+                
+            </div>
+        </div>
+    </div>
+
+    <!-- Analytics Tab -->
+    <div class="tab-content" id="scoringTab">
+        <div class="container" style="display: block;">
+            <input type="date" id="scoreDatePicker" style="display:none;">
+            <div class="today-section" style="margin-top:8px;">
+                <div style="font-weight:700; margin-bottom:10px;">Today's Breakdown</div>
+                <div style="display:grid; gap:8px;">
+                    <div>
+                        <button class="btn-secondary" style="text-align:left; width:100%;" onclick="toggleScoringBreakdown('sessions')">🎯 Focus Hours: <span id="scoreBreakdownSessionsSummary">0 XP</span> <span id="scoreBreakdownSessionsArrow">▼</span></button>
+                        <div id="scoreBreakdownSessionsDetail" style="display:none; padding:8px 12px; color:var(--text-secondary);"></div>
+                        <button class="btn-secondary" style="font-size:12px; padding:6px 12px; margin-top:6px; width:100%; text-align:left;" onclick="openLogPastSessionModal()">📝 Log Past Session</button>
+                    </div>
+                    <button class="btn-secondary" style="text-align:left;" onclick="toggleScoringBreakdown('habits')">⭕ Habits: <span id="scoreBreakdownHabitsSummary">0/0</span> <span id="scoreBreakdownHabitsArrow">▼</span></button>
+                    <div id="scoreBreakdownHabitsDetail" style="display:none; padding:8px 12px; color:var(--text-secondary);"></div>
+                </div>
+            </div>
+
+            <!-- Score Trends -->
+            <div class="chart-container">
+                <h3 style="margin-bottom: 16px;">Score Trends <span style="font-size:12px; font-weight:400; color:var(--text-secondary);">· click a point to see that day</span></h3>
+                <div class="chart-controls">
+                    <input type="date" id="chartStartDate">
+                    <input type="date" id="chartEndDate">
+                    <button onclick="updateChart()">Update Chart</button>
+                </div>
+                <canvas id="scoreChart"></canvas>
+            </div>
+
+            <!-- Session Analytics -->
+            <div class="today-section" style="margin-top: 24px;">
+                <div class="today-section-header">
+                    <div class="today-section-title">📊 Session Analytics</div>
+                    <div style="display: flex; gap: 8px; align-items: center; font-size: 13px;">
+                        <input type="date" id="sessionAnalyticsFrom" onchange="renderSessionAnalytics()" style="padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px;">
+                        <span style="color: var(--text-secondary);">to</span>
+                        <input type="date" id="sessionAnalyticsTo" onchange="renderSessionAnalytics()" style="padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 13px;">
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 16px;">
+                    <div style="padding: 12px; background: var(--bg-tertiary); border-radius: 8px;">
+                        <div style="font-size: 13px; color: var(--text-secondary);">Avg Sessions/Day</div>
+                        <div style="font-size: 24px; font-weight: 700; color: var(--text-primary);" id="sessionAnalyticsTotal">0</div>
+                    </div>
+                    <div style="padding: 12px; background: var(--bg-tertiary); border-radius: 8px;">
+                        <div style="font-size: 13px; color: var(--text-secondary);">Avg Time/Day</div>
+                        <div style="font-size: 24px; font-weight: 700; color: var(--text-primary);" id="sessionAnalyticsAvgDuration">0h</div>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 3fr 2fr; gap: 16px; margin-bottom: 16px;">
+                    <div class="chart-container" style="height:auto;">
+                        <canvas id="sessionAnalyticsChart" style="height:160px !important;"></canvas>
+                    </div>
+                    <div class="chart-container" style="height:auto; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                        <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; font-weight: 600;">Hours by Project</div>
+                        <canvas id="sessionAnalyticsPieChart" style="height:160px !important; max-height:160px;"></canvas>
+                    </div>
+                </div>
+
+                <div style="margin-top: 12px; cursor: pointer; color: var(--accent-primary); font-size: 14px; font-weight: 500;" onclick="const d=document.getElementById('sessionAnalyticsMore');const s=d.style.display==='none';d.style.display=s?'block':'none';this.textContent=s?'Hide details ▲':'Show more analysis ▼'">Show more analysis ▼</div>
+                <div id="sessionAnalyticsMore" style="display: none;">
+                    <div style="margin-top: 12px;">
+                        <div style="font-weight: 600; margin-bottom: 8px;">By Project</div>
+                        <div id="sessionAnalyticsByProject" style="display: grid; gap: 6px;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Habit Completion Chart — LAST -->
+            <div class="chart-container" style="margin-bottom: 24px;">
+                <h3 style="margin-bottom: 4px;">Habit Completion — Last 7 Days</h3>
+                <p style="font-size:12px; color:var(--text-secondary); margin:0 0 16px;">Stacked by status per day · hover for detail</p>
+                <canvas id="habitWeekChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+        <!-- ISLAND TAB -->
+        <div class="tab-content" id="islandTab">
+            <div class="island-wrapper">
+                <!-- Top Bar -->
+                <div class="island-topbar">
+                    <div class="island-topbar-left">
+                        <div class="island-stat-label">XP Wallet</div>
+                        <div class="island-stat-value" id="islandWalletVal">— XP</div>
+                    </div>
+                    <div class="island-topbar-center">
+                        <div class="island-stat-label" style="text-align:center;">Island Level</div>
+                        <div class="island-stat-value" id="islandLevelVal" style="text-align:center;">—</div>
+                        <div id="islandLevelProgress"></div>
+                    </div>
+                    <div class="island-topbar-right">
+                        <div class="island-stat-label" style="text-align:right;">XP Spent</div>
+                        <div class="island-stat-value" id="islandSpentVal" style="text-align:right; font-size:16px; color:var(--text-secondary);">— XP</div>
+                    </div>
+                </div>
+
+
+
+                <!-- Main Layout -->
+                <div class="island-main-layout">
+                    <!-- Canvas -->
+                    <div class="island-canvas-wrap">
+                        <div class="island-canvas" id="islandCanvas">
+                            <div id="islandItemsLayer"></div>
+                            <!-- Popup lives inside canvas (position:relative context) -->
+                            <div id="islandItemPopup">
+                                <button class="island-popup-close" onclick="closeIslandItemPopup()">✕</button>
+                                <div id="islandItemPopupTitle" class="island-popup-title"></div>
+                                <button class="island-popup-btn" id="islandUpgradeBtn" onclick="doUpgradeIslandItem()"></button>
+                            </div>
+                        </div>
+                        <div class="island-canvas-hint" id="islandCanvasHint"></div>
+                    </div>
+
+                    <!-- Shop Panel -->
+                    <div class="island-shop-panel">
+                        <div class="island-shop-header">🏪 Island Shop</div>
+                        <div id="islandShopList" class="island-shop-list"></div>
+                        <div class="island-shop-footer">
+                            Earn XP from habits &amp; sessions to spend here
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        </div><!-- /main-content-area -->
+    </div><!-- /app-body -->
+    <!-- FAB Add Menu -->
+    <div id="fabAddMenu">
+        <button class="fab-menu-item" onclick="fabAction('session')">▶ New Session</button>
+        <button class="fab-menu-item" onclick="fabAction('habit')">🎯 New Habit</button>
+        <div style="height:1px; background:var(--border-color); margin:4px 6px;"></div>
+        <button class="fab-menu-item" onclick="fabAction('projects')">📁 Manage Projects</button>
+    </div>
+    <button class="add-btn-float" id="mainAddBtn" onclick="toggleFabMenu(event)">+</button>
+
+    <!-- Task/Habit Modal -->
+    <div class="modal" id="itemModal">
+        <div class="modal-content">
+            <div class="modal-main-content">
+                <div class="modal-header" id="itemModalTitle">Add Task</div>
+                
+                <label class="modal-label required" id="modalTitleLabel">Title</label>
+                <input type="text" class="modal-input" id="modalTitle" placeholder="What needs to be done?">
+
+                <div id="habitDetailsContainer" style="display: none; margin-top: 12px;">
+                    <label class="modal-label">Details (optional)</label>
+                    <textarea class="modal-textarea" id="modalHabitDetails" placeholder="Additional notes about this habit" style="min-height: 100px;"></textarea>
+                </div>
+
+           <label class="modal-label">Project (optional)</label>
+                <select class="modal-select" id="modalProject"></select>
+
+            <div id="taskSpecificFields" style="display:none;"></div>
+
+            <div id="habitSpecificFields" style="display: none;">
+                <div id="selectedHabitIcon" data-icon="🎯" style="display:none;">🎯</div>
+                <div class="habit-modal-section" style="margin-top:0; padding-top:0; border-top:none;">
+                    <h4>Basic Info</h4>
+                    <div class="habit-field">
+                        <label class="modal-label">Habit Type</label>
+                        <select class="modal-select" id="modalHabitType">
+                            <option value="positive">Positive (Do this)</option>
+                            <option value="negative">Negative (Avoid this)</option>
+                        </select>
+                    </div>
+                    <div style="margin-bottom: 16px;">
+                        <label class="modal-label">Difficulty</label>
+                        <select class="modal-select" id="modalDifficulty">
+                            <option value="easy">Easy — Quick win (2–5 min) · 5 XP</option>
+                            <option value="medium" selected>Medium — Needs effort (5–20 min) · 10 XP</option>
+                            <option value="hard">Hard — Real effort (20+ min) · 20 XP</option>
+                        </select>
+                    </div>
+                    <div class="habit-field" style="margin-top:16px;">
+                        <label class="modal-label">Measurable Habit</label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="modalMeasurable" onchange="toggleMeasurableFields()">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="habit-modal-section">
+                    <h4>Schedule</h4>
+                    <div id="habitDaySelectorContainer" class="habit-day-selector-container">
+                        <label class="modal-label">Track on:</label>
+                        <div class="day-selector" id="habitDaysSelector">
+                            <div class="day-chip selected" data-day="0">Sun</div>
+                            <div class="day-chip selected" data-day="1">Mon</div>
+                            <div class="day-chip selected" data-day="2">Tue</div>
+                            <div class="day-chip selected" data-day="3">Wed</div>
+                            <div class="day-chip selected" data-day="4">Thu</div>
+                            <div class="day-chip selected" data-day="5">Fri</div>
+                            <div class="day-chip selected" data-day="6">Sat</div>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+                        <div>
+                            <label class="modal-label">Reminder Time (optional)</label>
+                            <div style="display:flex; gap:6px; align-items:center;">
+                                <input type="time" class="modal-input" id="modalHabitReminderTime" style="margin-bottom:0; flex:1;">
+                                <button type="button" class="btn-secondary" style="padding:6px 10px; font-size:12px; white-space:nowrap;" onclick="document.getElementById('modalHabitReminderTime').value=''">Clear</button>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="modal-label">Start Tracking Date</label>
+                            <input type="date" class="modal-input" id="modalHabitStartDate">
+                        </div>
+                    </div>
+                </div>
+
+                <div id="measurableFields" class="habit-modal-section" style="display: none;">
+                    <h4>Measurement</h4>
+                    <div class="modal-row">
+    <div>
+        <label class="modal-label">Target Value</label>
+        <input type="number" class="modal-input" id="modalTargetValue" placeholder="e.g., 5">
+    </div>
+    <div>
+        <label class="modal-label">Unit</label>
+        <input type="text" class="modal-input" id="modalUnit" placeholder="e.g., times">
+    </div>
+</div>
+<label class="modal-label">Period</label>
+<select class="modal-select" id="modalPeriod">
+    <option value="daily">Per Day</option>
+    <option value="weekly">Per Week</option>
+    <option value="monthly">Per Month</option>
+</select>
+                </div>
+
+    <!-- Habit Emoji Picker Popup -->
+                <div id="habitEmojiPickerPopup" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--bg-secondary); padding: 24px; border-radius: 12px; box-shadow: 0 8px 32px var(--shadow); z-index: 10001; max-width: 500px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <h3 style="margin: 0;">Choose Habit Icon</h3>
+                        <button type="button" onclick="closeHabitEmojiPicker()" style="background: none; border: none; font-size: 28px; cursor: pointer; color: var(--text-secondary);">×</button>
+                    </div>
+                    
+                    <input type="text" placeholder="Paste any emoji here" id="customHabitEmojiInput" style="width: 100%; padding: 14px; font-size: 24px; text-align: center; border: 2px solid var(--border-color); border-radius: 8px; margin-bottom: 16px; background: var(--bg-tertiary);" maxlength="2">
+                    
+                    <div style="max-height: 300px; overflow-y: auto; display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; padding: 8px;">
+                        <div class="emoji-option" onclick="selectHabitEmoji('🎯')">🎯</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('💪')">💪</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('🏃')">🏃</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('🧘')">🧘</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('📚')">📚</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('✍️')">✍️</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('🌅')">🌅</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('🛏️')">🛏️</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('💤')">💤</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('🥗')">🥗</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('💧')">💧</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('☕')">☕</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('🚭')">🚭</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('🧼')">🧼</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('🦷')">🦷</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('🧴')">🧴</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('⏰')">⏰</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('📱')">📱</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('💻')">💻</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('🎮')">🎮</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('📺')">📺</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('🧠')">🧠</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('❤️')">❤️</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('🧡')">🧡</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('💛')">💛</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('💚')">💚</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('💙')">💙</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('💜')">💜</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('🖤')">🖤</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('🤍')">🤍</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('🤎')">🤎</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('🔥')">🔥</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('⭐')">⭐</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('✨')">✨</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('🌟')">🌟</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('💫')">💫</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('🎨')">🎨</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('🎭')">🎭</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('🎪')">🎪</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('🎬')">🎬</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('🎤')">🎤</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('🎧')">🎧</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('🎼')">🎼</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('🎵')">🎵</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('🎶')">🎶</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('🎸')">🎸</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('🎹')">🎹</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('🥁')">🥁</div>
+                        <div class="emoji-option" onclick="selectHabitEmoji('🎺')">🎺</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer"> 
+                <button class="btn-danger" id="deleteItemBtn" style="display: none;" onclick="deleteCurrentItem()">Delete</button>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn-secondary" onclick="closeItemModal()">Cancel</button>
+                    <button class="btn-primary" onclick="saveItem()">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+    <!-- Project Registry Modal -->
+    <div class="modal" id="projectRegistryModal">
+        <div class="modal-content" style="max-width:500px;">
+            <div class="modal-header">📁 Project Registry</div>
+            <div style="display:flex; gap:8px; margin-bottom:16px;">
+                <input type="text" id="projectRegistryNewName" class="modal-input" placeholder="e.g. TAG Consultancy, Fitness, AI Learning" style="margin-bottom:0; flex:1;" onkeydown="if(event.key==='Enter')addProjectToRegistry()">
+                <button class="btn-primary" onclick="addProjectToRegistry()" style="white-space:nowrap; padding:10px 16px;">+ Add</button>
+            </div>
+            <div id="projectRegistryList" style="max-height:360px; overflow-y:auto;"></div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeProjectRegistry()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- OLD Project Modal (removed) -->
+    <div style="display:none" id="projectModal">
+        <div class="modal-content">
+            <div class="modal-header" id="projectModalTitle">Add Project</div>
+            <label class="modal-label">Icon</label>
+            <div style="display: flex; gap: 12px; align-items: center;">
+                <div class="icon-option selected" data-icon="📁" id="selectedProjectIcon" style="font-size: 40px; padding: 12px; cursor: default; border: 2px solid var(--border-color); border-radius: 8px;">📁</div>
+                <button type="button" class="btn-secondary" onclick="openProjectEmojiPicker()">Choose Icon</button>
+            </div>
+            <input type="hidden" id="projectIcon" value="📁">
+
+            <label class="modal-label required">Project Name</label>
+            <input type="text" class="modal-input" id="projectName" placeholder="e.g., Work">
+                
+<!-- Emoji Picker Popup -->
+            <div id="projectEmojiPickerPopup" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--bg-secondary); padding: 24px; border-radius: 12px; box-shadow: 0 8px 32px var(--shadow); z-index: 10001; max-width: 500px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                    <h3 style="margin: 0;">Choose Icon</h3>
+                    <button type="button" onclick="closeProjectEmojiPicker()" style="background: none; border: none; font-size: 28px; cursor: pointer; color: var(--text-secondary);">×</button>
+                </div>
+                
+                <input type="text" placeholder="Paste any emoji here" id="customProjectEmojiInput" style="width: 100%; padding: 14px; font-size: 24px; text-align: center; border: 2px solid var(--border-color); border-radius: 8px; margin-bottom: 16px; background: var(--bg-tertiary);" maxlength="2">
+                
+                <div style="max-height: 300px; overflow-y: auto; display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; padding: 8px;">
+                    <div class="emoji-option" onclick="selectProjectEmoji('📁')">📁</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('💼')">💼</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🏋️')">🏋️</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('📚')">📚</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🏠')">🏠</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('💡')">💡</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🎯')">🎯</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🚀')">🚀</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('📊')">📊</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('💰')">💰</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🎨')">🎨</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🎮')">🎮</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🎬')">🎬</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🎵')">🎵</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('📱')">📱</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('💻')">💻</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('⚙️')">⚙️</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🔧')">🔧</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🔬')">🔬</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🏆')">🏆</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('⭐')">⭐</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🔥')">🔥</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('💪')">💪</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🧠')">🧠</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('❤️')">❤️</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('☕')">☕</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🍕')">🍕</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🌍')">🌍</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('✈️')">✈️</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🚗')">🚗</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🏃')">🏃</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('⚽')">⚽</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🎾')">🎾</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🏀')">🏀</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🎸')">🎸</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('📷')">📷</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('📺')">📺</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🎤')">🎤</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🎧')">🎧</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🎹')">🎹</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🍔')">🍔</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🍰')">🍰</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🌮')">🌮</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🍜')">🍜</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🌸')">🌸</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🌺')">🌺</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🌻')">🌻</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🌹')">🌹</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🌲')">🌲</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🎄')">🎄</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('☀️')">☀️</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🌙')">🌙</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🌈')">🌈</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🔔')">🔔</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('📢')">📢</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('📝')">📝</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('✉️')">✉️</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('📦')">📦</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🎁')">🎁</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🏪')">🏪</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🏢')">🏢</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🏥')">🏥</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🏫')">🏫</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🏬')">🏬</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🏭')">🏭</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🛒')">🛒</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('💳')">💳</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('📈')">📈</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('📉')">📉</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('⏰')">⏰</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('📅')">📅</div>
+                    <div class="emoji-option" onclick="selectProjectEmoji('🗓️')">🗓️</div>
+                </div>
+            </div>
+
+            <label class="modal-label">Color</label>
+            <div class="color-picker">
+                <div class="color-option selected" data-color="#1967d2" style="background: #1967d2;"></div>
+                <div class="color-option" data-color="#D93025" style="background: #D93025;"></div>
+                <div class="color-option" data-color="#F9AB00" style="background: #F9AB00;"></div>
+                <div class="color-option" data-color="#1E8E3E" style="background: #1E8E3E;"></div>
+                <div class="color-option" data-color="#9334E6" style="background: #9334E6;"></div>
+                <div class="color-option" data-color="#FF6D00" style="background: #FF6D00;"></div>
+            </div>
+           
+            <div class="modal-row">
+                <div>
+                    <label class="modal-label">Start Date</label>
+                    <input type="date" class="modal-input" id="projectStartDate">
+                </div>
+                <div>
+                    <label class="modal-label">Target End Date</label>
+                    <input type="date" class="modal-input" id="projectEndDate">
+                </div>
+            </div>
+            
+            <label class="modal-label">Status</label>
+            <select class="modal-select" id="projectStatus">
+                <option value="active">Active</option>
+                <option value="on-hold">On Hold</option>
+                <option value="completed">Completed</option>
+                <option value="archived">Archived</option>
+            </select>
+            
+            <label class="modal-label">Tools</label>
+            <div id="projectToolsList" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px;"></div>
+
+            <label class="modal-label">Description</label>
+            <textarea class="modal-textarea" id="projectDescription" placeholder="Project description and goals..." style="min-height: 150px;"></textarea>
+
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeProjectModal()">Cancel</button>
+                <button class="btn-danger" id="deleteProjectBtn" style="display: none;" onclick="deleteCurrentProject()">Delete</button>
+                <button class="btn-primary" onclick="saveProject()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+   <div class="modal" id="settingsModal">
+        <div class="modal-content large">
+            <div class="modal-header">⚙️ Settings</div>
+
+            <div class="settings-section">
+                <div class="settings-section-title">Session Audio</div>
+                <div class="setting-item">
+                    <div>
+                        <div class="setting-label">Session End Sound</div>
+                    </div>
+                    <div class="setting-control">
+                        <select id="settingSessionEndSound">
+                            <option value="bellChime">Bell chime</option>
+                            <option value="softPing">Soft ping</option>
+                            <option value="digitalBeep">Digital beep</option>
+                            <option value="gentleTone">Gentle tone</option>
+                            <option value="windChime">Wind chime</option>
+                            <option value="notificationSound">Notification sound</option>
+                            <option value="ding">Ding</option>
+                            <option value="softAlarm">Soft alarm</option>
+                            <option value="popSound">Pop sound</option>
+                            <option value="clickSound">Click sound</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="settings-section">
+                <div class="settings-section-title">Day Cutoff Time</div>
+                <div class="setting-item">
+                    <div>
+                        <div class="setting-label">When does your day end?</div>
+                        <div class="setting-description">Activities after this time count toward the next day. Example: if cutoff is 3 AM, work done at 2 AM counts as previous day.</div>
+                    </div>
+                    <div class="setting-control">
+                        <input type="time" id="settingDayCutoffTime" value="03:00">
+                    </div>
+                </div>
+            </div>
+            <div class="settings-section">
+                <div class="settings-section-title">Tools</div>
+                <div class="setting-item">
+                    <div>
+                        <div class="setting-label">Tool Registry</div>
+                        <div class="setting-description">Manage the tools and resources you use.</div>
+                    </div>
+                    <div class="setting-control">
+                        <button class="btn-secondary" onclick="closeSettings(); openToolRegistry();">🧰 Open</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer" style="justify-content: space-between;">
+                <button class="btn-primary" onclick="saveSettings()">Save Settings</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rules Modal -->
+    <div class="modal" id="rulesModal">
+        <div class="modal-content large" style="max-height: 85vh; overflow-y: auto;">
+            <div class="modal-header">📖 How XP Works</div>
+
+            <div class="settings-section">
+                <div class="settings-section-title">XP from Sessions</div>
+                <div style="display: grid; gap: 8px;">
+                    <div class="setting-item" style="padding: 10px 0;">
+                        <div class="setting-label">Base rate</div>
+                        <div style="font-weight: 600; color: var(--accent-color);">1 min = 0.25 XP</div>
+                    </div>
+                    <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">Focus rating multiplier applied at session end:</div>
+                    <div class="setting-item" style="padding: 8px 0; border-bottom: none;">
+                        <div>🔥 <span class="setting-label">Locked In</span></div>
+                        <div style="font-weight: 600;">Full XP (1×)</div>
+                    </div>
+                    <div class="setting-item" style="padding: 8px 0; border-bottom: none;">
+                        <div>🙂 <span class="setting-label">Decent Focus</span></div>
+                        <div style="font-weight: 600;">Reduced XP (0.7×)</div>
+                    </div>
+                    <div class="setting-item" style="padding: 8px 0; border-bottom: none;">
+                        <div>😵 <span class="setting-label">Distracted</span></div>
+                        <div style="font-weight: 600;">Minimal XP (0.5×)</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-section-title">XP from Habits</div>
+                <div style="display: grid; gap: 0;">
+                    <div class="setting-item" style="padding: 10px 0;">
+                        <div class="setting-label">Easy &nbsp;<span style="font-size:11px;color:var(--text-secondary);">Quick win (2–5 min)</span></div>
+                        <div style="font-weight: 600; color: var(--accent-color);">5 XP</div>
+                    </div>
+                    <div class="setting-item" style="padding: 10px 0;">
+                        <div class="setting-label">Medium &nbsp;<span style="font-size:11px;color:var(--text-secondary);">Needs effort (5–20 min)</span></div>
+                        <div style="font-weight: 600; color: var(--accent-color);">10 XP</div>
+                    </div>
+                    <div class="setting-item" style="padding: 10px 0;">
+                        <div class="setting-label">Hard &nbsp;<span style="font-size:11px;color:var(--text-secondary);">Real effort (20+ min)</span></div>
+                        <div style="font-weight: 600; color: var(--accent-color);">20 XP</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-section-title">Sessions</div>
+                <div style="display: grid; gap: 8px; font-size: 14px; color: var(--text-secondary); line-height: 1.6;">
+                    <div>Sessions are manually started and completed. XP is only awarded once you finish and rate the session — interrupted sessions do not count.</div>
+                    <div>A focus rating is required after every completed session.</div>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-section-title">XP Usage</div>
+                <div style="font-size: 14px; color: var(--text-secondary); line-height: 1.6;">
+                    XP earned from sessions and habits will be used to build and upgrade your island. More to come.
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-section-title">Fair Use</div>
+                <div style="font-size: 14px; color: var(--text-secondary); line-height: 1.6;">
+                    This system works best when used honestly. Log what you actually do — the goal is to reflect real effort, not to game the numbers.
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn-primary" onclick="document.getElementById('rulesModal').classList.remove('active');">Got it</button>
+            </div>
+        </div>
+    </div>
+<!-- Today Habit Premium Action Modal -->
+<div class="modal" id="todayHabitModal">
+    <div class="ham-card">
+        <div class="ham-icon" id="todayHabitModalIcon">🎯</div>
+        <div class="ham-title" id="todayHabitModalTitle">Habit Name</div>
+        <div class="ham-subtitle" id="todayHabitModalSubtitle">Did you complete this today?</div>
+        <div id="todayHabitYesNoActions" style="display:grid; gap:12px; margin-top:20px;">
+            <button class="ham-btn ham-btn-complete" onclick="todayMarkHabitDone()">
+                <span>✓</span> Yes, Completed!
+            </button>
+            <button class="ham-btn ham-btn-notdone" onclick="todayMarkHabitFailed()">
+                <span>✕</span> Not Today
+            </button>
+            <button class="ham-btn ham-btn-cancel" onclick="closeTodayHabitModal()">Cancel</button>
+        </div>
+        <div id="todayHabitMeasurableActions" style="display:none; margin-top:16px;">
+            <div class="ham-value-label" id="todayHabitValueLabel">Enter value</div>
+            <input type="number" class="ham-value-input" id="todayHabitValueInput" min="0" placeholder="0"
+                onkeydown="if(event.key==='Enter') todaySubmitMeasurable()">
+            <div style="display:grid; gap:10px; margin-top:16px;">
+                <button class="ham-btn ham-btn-complete" onclick="todaySubmitMeasurable()">✓ Save &amp; Complete</button>
+                <button class="ham-btn ham-btn-cancel" onclick="closeTodayHabitModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Habit Success Reward Modal -->
+<div id="habitSuccessModal" style="display:none; position:fixed; inset:0; z-index:9998; align-items:center; justify-content:center; background:rgba(0,0,0,0.72); backdrop-filter:blur(6px);">
+    <div class="hsm-card">
+        <div class="hsm-confetti-row">🎉</div>
+        <div class="hsm-title">Great Job!</div>
+        <div class="hsm-habit-name" id="hsmHabitName"></div>
+        <div class="hsm-stats">
+            <div class="hsm-stat">
+                <div class="hsm-stat-icon">⚡</div>
+                <div class="hsm-stat-value" id="hsmXp">+0 XP</div>
+                <div class="hsm-stat-label">XP Earned</div>
+            </div>
+            <div class="hsm-stat-divider"></div>
+            <div class="hsm-stat">
+                <div class="hsm-stat-icon flame">🔥</div>
+                <div class="hsm-stat-value" id="hsmStreak">1</div>
+                <div class="hsm-stat-label">Day Streak</div>
+            </div>
+        </div>
+        <div class="hsm-milestone" id="hsmMilestone" style="display:none;"></div>
+        <textarea id="hsmNoteInput" placeholder="Add a note about this habit... (optional)" style="width:100%; box-sizing:border-box; margin-top:12px; padding:10px 12px; border-radius:10px; border:1px solid var(--border-color); background:var(--bg-secondary); color:var(--text-primary); font-size:13px; font-family:inherit; resize:none; height:70px; outline:none;"></textarea>
+        <button class="hsm-btn" onclick="closeHabitSuccessModal()">Awesome! 🙌</button>
+    </div>
+</div>
+
+<!-- Day Detail Panel (Score Trends click) -->
+<div id="dayDetailPanel" style="display:none; position:fixed; inset:0; z-index:9997; align-items:center; justify-content:center; background:rgba(0,0,0,0.6); backdrop-filter:blur(4px);" onclick="if(event.target===this)closeDayDetailPanel()">
+    <div style="background:var(--bg-primary); border-radius:16px; padding:24px; width:min(480px,94vw); max-height:80vh; overflow-y:auto; box-shadow:0 8px 40px rgba(0,0,0,0.4);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <div style="font-size:16px; font-weight:700;" id="dayDetailTitle">Day Details</div>
+            <button onclick="closeDayDetailPanel()" style="background:none; border:none; font-size:20px; cursor:pointer; color:var(--text-secondary); line-height:1;">×</button>
+        </div>
+        <div id="dayDetailContent"></div>
+    </div>
+</div>
+
+<!-- Not Today Motivational Modal -->
+<div id="habitNotTodayModal" style="display:none; position:fixed; inset:0; z-index:9998; align-items:center; justify-content:center; background:rgba(0,0,0,0.65); backdrop-filter:blur(6px);">
+    <div class="hntm-card">
+        <div class="hntm-emoji">💛</div>
+        <div class="hntm-title">No worries</div>
+        <div class="hntm-text">Consistency beats perfection.<br>Come back tomorrow.</div>
+        <button class="hntm-btn" onclick="closeHabitNotTodayModal()">I'll try tomorrow</button>
+    </div>
+</div>
+
+<!-- Combo Momentum Bonus Modal -->
+<div id="habitComboModal" style="display:none; position:fixed; inset:0; z-index:9999; align-items:center; justify-content:center; background:rgba(0,0,0,0.75); backdrop-filter:blur(6px);">
+    <div class="hcm-card">
+        <div class="hcm-lightning">⚡</div>
+        <div class="hcm-title">Momentum Bonus!</div>
+        <div class="hcm-subtitle" id="hcmSubtitle">You completed 3 habits!</div>
+        <div class="hcm-xp">+15 Bonus XP</div>
+        <button class="hcm-btn" onclick="closeHabitComboModal()">Let's Go! 🚀</button>
+    </div>
+</div>
+
+<!-- Confetti Canvas -->
+<canvas id="confettiCanvas" style="position:fixed; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:99997;"></canvas>
+<!-- Island Rules Modal -->
+<div class="modal" id="islandRulesModal">
+    <div class="modal-content large" style="max-height: 85vh; overflow-y: auto;">
+        <div class="modal-header">🏝️ How Island Works</div>
+
+        <div class="settings-section">
+            <div class="settings-section-title">XP Wallet</div>
+            <div style="display: grid; gap: 8px;">
+                <div class="setting-item" style="padding: 10px 0;">
+                    <div class="setting-label">What is the XP Wallet?</div>
+                    <div style="font-weight: 600; color: var(--accent-color);">Earned XP − Spent XP</div>
+                </div>
+                <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">Earn XP from sessions and habits. Spend it here to build your island. You cannot go into debt — items are only unlocked when you have enough.</div>
+            </div>
+        </div>
+
+        <div class="settings-section">
+            <div class="settings-section-title">Buying &amp; Placing Items</div>
+            <div style="display: grid; gap: 0;">
+                <div class="setting-item" style="padding: 10px 0;">
+                    <div class="setting-label">Step 1</div>
+                    <div style="font-weight: 600; color: var(--accent-color);">Unlock from the shop</div>
+                </div>
+                <div class="setting-item" style="padding: 10px 0;">
+                    <div class="setting-label">Step 2</div>
+                    <div style="font-weight: 600; color: var(--accent-color);">Click island to place it</div>
+                </div>
+                <div class="setting-item" style="padding: 10px 0; border-bottom: none;">
+                    <div class="setting-label">Step 3</div>
+                    <div style="font-weight: 600; color: var(--accent-color);">Drag to reposition anytime</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="settings-section">
+            <div class="settings-section-title">Moving Items</div>
+            <div style="display: grid; gap: 8px;">
+                <div class="setting-item" style="padding: 10px 0;">
+                    <div class="setting-label">How to move</div>
+                    <div style="font-weight: 600;">Click, hold &amp; drag</div>
+                </div>
+                <div class="setting-item" style="padding: 10px 0; border-bottom: none;">
+                    <div class="setting-label">Out-of-bounds drop</div>
+                    <div style="font-weight: 600;">Snaps to last valid spot</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="settings-section">
+            <div class="settings-section-title">Upgrading Items</div>
+            <div style="display: grid; gap: 8px;">
+                <div class="setting-item" style="padding: 10px 0;">
+                    <div class="setting-label">How to upgrade</div>
+                    <div style="font-weight: 600;">Right-click or ⚙ gear icon</div>
+                </div>
+                <div class="setting-item" style="padding: 10px 0; border-bottom: none;">
+                    <div class="setting-label">Upgrade chains</div>
+                    <div style="font-weight: 600; color: var(--accent-color);">Tent → Cabin → House → Villa</div>
+                </div>
+            </div>
+            <div style="font-size: 13px; color: var(--text-secondary); margin-top: 8px;">Each tier must be purchased separately. Upgrades cost additional XP and replace the previous tier.</div>
+        </div>
+
+        <div class="settings-section">
+            <div class="settings-section-title">Rules</div>
+            <div style="display: grid; gap: 0;">
+                <div class="setting-item" style="padding: 10px 0;">
+                    <div class="setting-label">🔒 Can you sell items?</div>
+                    <div style="font-weight: 600;">No — purchases are permanent</div>
+                </div>
+                <div class="setting-item" style="padding: 10px 0; border-bottom: none;">
+                    <div class="setting-label">📈 How to grow faster?</div>
+                    <div style="font-weight: 600;">Log more sessions &amp; habits</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal-footer">
+            <button class="btn-primary" onclick="document.getElementById('islandRulesModal').classList.remove('active')">Got it</button>
+        </div>
+    </div>
+</div>
+<!-- Note Modal -->
+<div class="modal" id="noteModal">
+    <div class="modal-content">
+        <div class="modal-header" id="noteModalTitle">Add Note</div>
+        
+        <label class="modal-label required">Title</label>
+        <input type="text" class="modal-input" id="noteTitle" placeholder="Note title">
+        
+        <label class="modal-label">Content</label>
+        
+        <div class="note-formatting-toolbar">
+            <button type="button" class="format-btn" onclick="formatNote('bold')" title="Bold"><b>B</b></button>
+            <button type="button" class="format-btn" onclick="formatNote('italic')" title="Italic"><i>I</i></button>
+            <button type="button" class="format-btn" onclick="formatNote('underline')" title="Underline"><u>U</u></button>
+            <button type="button" class="format-btn" onclick="formatNote('strikeThrough')" title="Strikethrough"><s>S</s></button>
+            <button type="button" class="format-btn" onclick="formatNote('hiliteColor', '#ffeb3b')" title="Highlight">🖍️</button>
+            <button type="button" class="format-btn" onclick="formatNote('removeFormat')" title="Remove Formatting">✕</button>
+            <span style="width: 1px; height: 24px; background: var(--border-color); margin: 0 4px;"></span>
+            <button type="button" class="format-btn" onclick="formatNote('formatBlock', 'h1')" title="Heading 1">H1</button>
+            <button type="button" class="format-btn" onclick="formatNote('formatBlock', 'h2')" title="Heading 2">H2</button>
+            <button type="button" class="format-btn" onclick="formatNote('formatBlock', 'h3')" title="Heading 3">H3</button>
+            <button type="button" class="format-btn" onclick="formatNote('formatBlock', 'p')" title="Paragraph">P</button>
+            <span style="width: 1px; height: 24px; background: var(--border-color); margin: 0 4px;"></span>
+            <button type="button" class="format-btn" onclick="formatNote('insertUnorderedList')" title="Bullet List (click again to remove)">• List</button>
+            <button type="button" class="format-btn" onclick="formatNote('insertOrderedList')" title="Numbered List (click again to remove)">1. List</button>
+        </div>
+        
+        <div id="noteContent" class="note-content-editable" contenteditable="true" onmouseup="handleNoteSelection()" onkeyup="handleNoteSelection()" placeholder="Write your note..."></div>
+        
+        <div id="selectionActions" style="display: none; margin-top: 8px; gap: 8px;">
+            <button type="button" class="btn-secondary" style="padding: 6px 12px; font-size: 13px;" onclick="event.preventDefault(); createTaskFromSelection()">📋 Create Task</button>
+            <button type="button" class="btn-secondary" style="padding: 6px 12px; font-size: 13px;" onclick="event.preventDefault(); createHabitFromSelection()">🎯 Create Habit</button>
+        </div>
+        
+        <label class="modal-label required">Project</label>
+        <select class="modal-input" id="noteProject" required>
+        </select>
+        
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeNoteModal()">Cancel</button>
+            <button class="btn-danger" id="deleteNoteBtn" style="display: none;" onclick="deleteCurrentNote()">Delete</button>
+            <button class="btn-primary" onclick="saveNote()">Save</button>
+        </div>
+    </div>
+</div>
+
+    <!-- Habit Value Modal -->
+    <div class="modal" id="habitValueModal">
+        <div class="modal-content">
+            <div class="modal-header" id="habitValueModalTitle">Log Habit Value</div>
+            
+            <label class="modal-label">Value</label>
+            <input type="number" class="modal-input" id="habitValueInput" placeholder="Enter value">
+            <div style="font-size: 12px; color: var(--text-secondary); margin-top: -8px; margin-bottom: 12px;">
+                Target: <span id="habitValueTarget">0</span> <span id="habitValueUnit"></span>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeHabitValueModal()">Cancel</button>
+                <button class="btn-primary" onclick="saveHabitValue()">Save</button>
+            </div>
+        </div>
+    </div>
+    <!-- Weekly Habit Modal -->
+<div class="modal" id="weeklyHabitModal">
+    <div class="modal-content" style="max-width: 400px;">
+        <div class="modal-header" id="weeklyHabitModalTitle">Weekly Progress</div>
+        
+        <div style="text-align: center; margin: 24px 0;">
+            <div style="font-size: 48px; font-weight: 700; color: var(--text-primary);" id="weeklyHabitCount">0</div>
+            <div style="font-size: 16px; color: var(--text-secondary); margin-top: 8px;">
+                out of <span id="weeklyHabitTarget">6</span> <span id="weeklyHabitUnit">times</span>
+            </div>
+        </div>
+        
+        <div style="display: flex; gap: 12px; margin-bottom: 24px;">
+            <button class="btn-secondary" style="flex: 1; font-size: 24px; padding: 16px;" onclick="adjustWeeklyHabit(-1)">− 1</button>
+            <button class="btn-primary" style="flex: 1; font-size: 24px; padding: 16px;" onclick="adjustWeeklyHabit(1)">+ 1</button>
+        </div>
+        
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeWeeklyHabitModal()">Done</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal" id="habitAnalyticsModal">
+    <div class="modal-content large">
+        <div class="modal-main-content">
+            <div class="modal-header">Habit Analytics</div>
+            <div id="habitAnalyticsInfo" style="margin-bottom: 12px; color: var(--text-secondary);"></div>
+            <div class="chart-container">
+                <canvas id="habitAnalyticsChart" height="120"></canvas>
+            </div>
+            <div id="habitAnalyticsStats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; margin-top: 12px;"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closeHabitAnalyticsModal()">Close</button>
+        </div>
+    </div>
+</div>
+<div class="modal" id="sessionDetailModal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header" id="sessionDetailTitle">Session Details</div>
+            
+            <div style="display: grid; gap: 12px; margin-bottom: 16px;">
+                <div><strong>Project:</strong> <span id="sessionDetailProject"></span></div>
+                <div><strong>Duration:</strong> <span id="sessionDetailDuration"></span></div>
+                <div><strong>Time:</strong> <span id="sessionDetailTime"></span></div>
+                <div><strong>XP Earned:</strong> <span id="sessionDetailPoints"></span></div>
+            </div>
+            
+            <div style="margin-bottom: 16px;">
+                <strong style="display: block; margin-bottom: 8px;">Notes:</strong>
+                <div id="sessionDetailNotes" style="padding: 12px; background: var(--bg-tertiary); border-radius: 6px; min-height: 80px; white-space: pre-wrap;"></div>
+            </div>
+            
+            <div style="margin-bottom: 16px;">
+                <strong style="display: block; margin-bottom: 8px;">Tasks Completed:</strong>
+                <div id="sessionDetailTasks"></div>
+            </div>
+            
+            <div class="modal-footer">
+                <button class="btn-danger" onclick="deleteSession()">Delete Session</button>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn-primary" onclick="openEditSessionModal()">Edit</button>
+                    <button class="btn-secondary" onclick="closeSessionDetailModal()">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+<div class="modal" id="editSessionModal">
+        <div class="modal-content" style="max-width: 520px;">
+            <div class="modal-header">✏️ Edit Session</div>
+
+            <label class="modal-label required">Project</label>
+            <select class="modal-select" id="editSessionProjectSelect"></select>
+
+            <label class="modal-label required">Duration (minutes)</label>
+            <input type="number" class="modal-input" id="editSessionDuration" min="1" placeholder="e.g., 60">
+
+            <label class="modal-label required">Start Time</label>
+            <input type="datetime-local" class="modal-input" id="editSessionStartTime">
+
+            <label class="modal-label">Session Notes</label>
+            <textarea class="modal-textarea" id="editSessionNotes" placeholder="What did you work on?" style="min-height: 80px;"></textarea>
+
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeEditSessionModal()">Cancel</button>
+                <button class="btn-primary" onclick="saveEditedSession()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+<div class="modal" id="logPastSessionModal">
+        <div class="modal-content" style="max-width: 520px;">
+            <div class="modal-header">📝 Log Past Session</div>
+
+            <label class="modal-label required">Project</label>
+            <select class="modal-select" id="pastSessionProjectSelect"></select>
+
+            <label class="modal-label required">Duration (minutes)</label>
+            <input type="number" class="modal-input" id="pastSessionDuration" min="1" placeholder="e.g., 60">
+
+            <label class="modal-label required">Start Time</label>
+            <input type="datetime-local" class="modal-input" id="pastSessionStartTime">
+
+            <label class="modal-label">Session Notes (optional)</label>
+            <textarea class="modal-textarea" id="pastSessionNotes" placeholder="What did you work on?" style="min-height: 80px;"></textarea>
+
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeLogPastSessionModal()">Cancel</button>
+                <button class="btn-primary" onclick="savePastSession()">Save Session</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="startSessionModal">
+        <div class="modal-content" style="max-width: 640px; overflow-x: hidden;">
+            <div class="modal-header" style="padding: 24px 24px 0;">⏱️ Start Session</div>
+            <div style="padding: 0 24px 16px;">
+                <label class="modal-label required">Step 1: Choose Session Type</label>
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 16px; padding: 6px 4px;">
+                    <button type="button" class="session-type-card session-duration-btn" data-duration="30" onclick="selectSessionDuration(30)">
+                        <img src="public/assets/focus-buddy/sprint.png" alt="Sprint" onerror="this.style.display='none'">
+                        <div class="session-type-name">Sprint</div>
+                        <div class="session-type-meta">30 min · 7.5 XP</div>
+                    </button>
+                    <button type="button" class="session-type-card session-duration-btn" data-duration="60" onclick="selectSessionDuration(60)">
+                        <img src="public/assets/focus-buddy/focus.png" alt="Focus" onerror="this.style.display='none'">
+                        <div class="session-type-name">Focus</div>
+                        <div class="session-type-meta">60 min · 15 XP</div>
+                    </button>
+                    <button type="button" class="session-type-card session-duration-btn" data-duration="90" onclick="selectSessionDuration(90)">
+                        <img src="public/assets/focus-buddy/deep.png" alt="Deep Work" onerror="this.style.display='none'">
+                        <div class="session-type-name">Deep Work</div>
+                        <div class="session-type-meta">90 min · 22.5 XP</div>
+                    </button>
+                    <button type="button" class="session-type-card session-duration-btn" data-duration="0" onclick="selectSessionDuration(0)">
+                        <img src="public/assets/focus-buddy/marathon.png" alt="Marathon" onerror="this.style.display='none'">
+                        <div class="session-type-name">Marathon</div>
+                        <div class="session-type-meta">Open · ⏱️</div>
+                    </button>
+                </div>
+
+                <label class="modal-label required">Step 2: Choose Project</label>
+                <select class="modal-select" id="sessionProjectSelect"></select>
+                <div id="sessionNoProjectsMsg" style="display:none; margin-top:10px; padding:12px; background:var(--bg-tertiary); border-radius:8px; color:var(--text-secondary); font-size:13px;">
+                    No projects yet. <button class="btn-secondary" style="padding:4px 10px; font-size:12px; margin-left:6px;" onclick="closeStartSessionModal(); openProjectRegistry()">Create a project first</button>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeStartSessionModal()">Cancel</button>
+                <button class="btn-primary" id="startSessionBtn" onclick="startSession()">Start Session</button>
+            </div>
+        </div>
+    </div>
+<div class="modal" id="focusQualityModal">
+        <div class="modal-content" style="max-width: 520px;">
+            <div class="modal-header">📊 Focus Quality</div>
+            <div id="focusQualityContent" style="display: grid; gap: 12px;"></div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeFocusQuality()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="toolRegistryModal">
+        <div class="modal-content" style="max-width: 780px;">
+            <div class="modal-header">🧰 Tool Registry</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+                <input type="text" id="toolNameInput" placeholder="Name" style="padding: 10px 12px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 14px; background: var(--bg-primary); color: var(--text-primary);">
+                <select id="toolCategoryInput" style="padding: 10px 12px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 14px; background: var(--bg-primary); color: var(--text-primary);">
+                    <option value="AI">🤖 AI</option>
+                    <option value="Dev">💻 Dev</option>
+                    <option value="Research">🔍 Research</option>
+                    <option value="Marketing">📣 Marketing</option>
+                    <option value="Finance">💰 Finance</option>
+                    <option value="Communication">💬 Comms</option>
+                    <option value="Design">🎨 Design</option>
+                    <option value="Other">📦 Other</option>
+                </select>
+                <input type="text" id="toolUrlInput" placeholder="URL (optional)" style="padding: 10px 12px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 14px; background: var(--bg-primary); color: var(--text-primary);">
+                <input type="text" id="toolDetailInput" placeholder="Details (optional)" style="padding: 10px 12px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 14px; background: var(--bg-primary); color: var(--text-primary);">
+            </div>
+            <div style="margin-bottom: 16px;">
+                <button class="btn-primary" onclick="addToolFromRegistry()" style="padding: 10px 20px; width: 100%;">+ Add Tool</button>
+            </div>
+            <div id="toolRegistryList" style="max-height: 400px; overflow-y: auto;"></div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeToolRegistry()">Close</button>
+            </div>
+        </div>
+    </div>
+    <div class="modal" id="sessionEndPopup">
+        <div class="modal-content" style="max-width: 420px;">
+            <div class="modal-header">Session Complete! ⏰</div>
+            <div style="font-size: 14px; color: var(--text-secondary); margin-bottom: 6px;">
+                Project: <strong id="sessionEndProjectName">-</strong>
+            </div>
+            <div style="font-size: 14px; color: var(--text-secondary); margin-bottom: 6px;">
+                Duration: <strong id="sessionEndDuration">0m</strong>
+            </div>
+            <div style="font-size: 14px; color: var(--text-secondary); margin-bottom: 12px;">
+                Tasks completed: <strong id="sessionEndTasksCount">0</strong>
+            </div>
+            <label class="modal-label">Session Notes:</label>
+            <textarea id="sessionEndNotesInput" class="modal-textarea" style="min-height: 140px;" placeholder="Write notes about this session..."></textarea>
+            <div style="margin: 12px 0; display: grid; gap: 8px;">
+                <div style="font-weight: 600; font-size: 14px;">Tools Used</div>
+                <div id="sessionEndToolsTags" style="display: flex; flex-wrap: wrap; gap: 6px; min-height: 28px;"></div>
+                <div>
+                    <button class="btn-secondary" onclick="openSessionToolPicker()" style="font-size: 13px; padding: 6px 12px;">+ Add Tool</button>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="discardSessionEnd()">Discard</button>
+                <button class="btn-primary" onclick="saveAndCloseSessionEnd()">Save & Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tool Picker Modal (session end) -->
+    <div class="modal" id="sessionToolPickerModal">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header" style="padding: 24px 24px 0;">🧰 Add Tools</div>
+            <div style="padding: 0 24px 16px;">
+                <input type="text" id="toolPickerSearch" class="modal-input" placeholder="Search tools..." oninput="filterToolPickerList()" style="margin-top: 16px; margin-bottom: 12px;">
+                <div id="toolPickerList" style="max-height: 260px; overflow-y: auto; display: grid; gap: 4px; margin-bottom: 16px;"></div>
+                <div style="border-top: 1px solid var(--border-color); padding-top: 14px;">
+                    <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 8px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">Add New Tool</div>
+                    <div style="display: flex; gap: 8px;">
+                        <input type="text" id="newToolNameFromPicker" class="modal-input" placeholder="Tool name…" style="flex: 1; margin: 0;" onkeydown="if(event.key==='Enter') addNewToolFromPicker()">
+                        <button class="btn-primary" onclick="addNewToolFromPicker()" style="padding: 8px 16px; white-space: nowrap;">Add</button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-primary" onclick="closeSessionToolPicker()" style="width: 100%;">Done</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="activeSessionView" style="display: none; position: fixed; left: 20px; bottom: 20px; width: min(420px, calc(100vw - 40px)); max-height: 70vh; overflow: auto; z-index: 1005; padding: 14px; border: 2px solid var(--accent-color); border-radius: 10px; background: var(--bg-secondary); box-shadow: 0 8px 24px var(--shadow);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <div style="font-size: 13px; color: var(--text-secondary);">Active Session</div>
+            <button id="sessionMinimizeBtn" onclick="toggleActiveSessionMinimize()" style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-secondary); padding: 0; line-height: 1;" title="Minimize">▼</button>
+        </div>
+        <div id="activeSessionContent">
+        <div style="font-size: 17px; font-weight: 700; margin-top: 4px;" id="activeSessionProjectName">Project</div>
+        <div id="activeSessionTools" style="display:flex; flex-wrap:wrap; gap:4px; margin-top:4px;"></div>
+        <div style="display:flex; align-items:center; gap:12px; margin: 8px 0 4px;">
+            <img id="activeSessionBuddy" src="" alt="" style="width:56px; height:56px; object-fit:contain; flex-shrink:0; animation: buddyFloat 3s ease-in-out infinite;">
+            <div>
+                <div style="font-size: 42px; font-weight: 800; color: var(--accent-color); line-height:1;" id="activeSessionTimer">00:00</div>
+                <div style="font-size: 15px; color: var(--text-secondary); margin-top:4px;">
+                    XP: <span id="activeSessionLiveXP" style="font-weight: 700; color: var(--accent-color);">0.0</span>
+                </div>
+            </div>
+        </div>
+
+        <div style="margin: 8px 0 10px;">
+            <div style="font-size: 13px; font-weight: 600; margin-bottom: 6px;">Project Tasks</div>
+            <div id="activeSessionTaskList" style="display: grid; gap: 6px; max-height: 180px; overflow: auto;"></div>
+        </div>
+
+        <div style="margin: 8px 0 12px;">
+            <label for="activeSessionNotes" style="display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px;">Quick Notes</label>
+            <textarea id="activeSessionNotes" class="modal-textarea" style="min-height: 70px; margin-bottom: 0;" placeholder="Add session notes..." oninput="updateActiveSessionNotes()"></textarea>
+        </div>
+
+        <div style="display: flex;">
+            <button class="btn-primary" style="flex: 1; padding: 8px 12px;" onclick="completeSessionManually()">Complete Session</button>
+        </div>
+        </div>
+    </div>
+
+
+    <!-- Focus Rating Modal -->
+    <div class="modal" id="focusRatingModal">
+        <div class="modal-content" style="max-width: 340px; text-align: center;">
+            <div class="modal-header">How was your focus?</div>
+            <div style="display: grid; gap: 10px; padding-top: 8px;">
+                <button class="focus-rating-btn" onclick="selectFocusRating(1)">
+                    <span class="focus-rating-emoji">🔥</span>
+                    <span class="focus-rating-label">Locked In</span>
+                    <span class="focus-rating-mult">1× XP</span>
+                </button>
+                <button class="focus-rating-btn" onclick="selectFocusRating(0.7)">
+                    <span class="focus-rating-emoji">🙂</span>
+                    <span class="focus-rating-label">Decent Focus</span>
+                    <span class="focus-rating-mult">0.7× XP</span>
+                </button>
+                <button class="focus-rating-btn" onclick="selectFocusRating(0.5)">
+                    <span class="focus-rating-emoji">😵</span>
+                    <span class="focus-rating-label">Distracted</span>
+                    <span class="focus-rating-mult">0.5× XP</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- XP Gain Popup (reused for streak & gem notifications) -->
+    <div id="xpGainPopup"></div>
+
+    <!-- Streak & Recover Gems Help Modal -->
+    <div class="modal" id="streakRulesModal">
+        <div class="modal-content large" style="max-height: 85vh; overflow-y: auto;">
+            <div class="modal-header">&#x1F525; Streaks &amp; Recover Gems</div>
+
+            <div class="settings-section">
+                <div class="settings-section-title">Building Streaks</div>
+                <div style="display: grid; gap: 0;">
+                    <div class="setting-item" style="padding: 10px 0;">
+                        <div class="setting-label">How streaks work</div>
+                        <div style="font-weight: 600;">Complete a habit every scheduled day</div>
+                    </div>
+                    <div class="setting-item" style="padding: 10px 0;">
+                        <div class="setting-label">Yes / No habits</div>
+                        <div style="font-weight: 600;">Mark complete to count the day</div>
+                    </div>
+                    <div class="setting-item" style="padding: 10px 0; border-bottom: none;">
+                        <div class="setting-label">Numeric habits</div>
+                        <div style="font-weight: 600;">Reach the target value to count</div>
+                    </div>
+                </div>
+                <div style="font-size: 13px; color: var(--text-secondary); margin-top: 8px;">Non-scheduled days do not break your streak.</div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-section-title">Milestone Bonus XP</div>
+                <div style="display: grid; gap: 0;">
+                    <div class="setting-item" style="padding: 8px 0;">
+                        <div class="setting-label">&#x1F525; 3 Day Streak</div>
+                        <div style="font-weight: 600; color: var(--accent-color);">+10 XP</div>
+                    </div>
+                    <div class="setting-item" style="padding: 8px 0;">
+                        <div class="setting-label">&#x1F525; 7 Day Streak</div>
+                        <div style="font-weight: 600; color: var(--accent-color);">+25 XP</div>
+                    </div>
+                    <div class="setting-item" style="padding: 8px 0;">
+                        <div class="setting-label">&#x1F525; 14 Day Streak</div>
+                        <div style="font-weight: 600; color: var(--accent-color);">+50 XP</div>
+                    </div>
+                    <div class="setting-item" style="padding: 8px 0;">
+                        <div class="setting-label">&#x1F525; 30 Day Streak</div>
+                        <div style="font-weight: 600; color: var(--accent-color);">+150 XP</div>
+                    </div>
+                    <div class="setting-item" style="padding: 8px 0;">
+                        <div class="setting-label">&#x1F525; 50 Day Streak</div>
+                        <div style="font-weight: 600; color: var(--accent-color);">+300 XP</div>
+                    </div>
+                    <div class="setting-item" style="padding: 8px 0; border-bottom: none;">
+                        <div class="setting-label">&#x1F525; 100 Day Streak</div>
+                        <div style="font-weight: 600; color: var(--accent-color);">+1,000 XP</div>
+                    </div>
+                </div>
+                <div style="font-size: 13px; color: var(--text-secondary); margin-top: 8px;">Bonus XP is awarded once when each milestone is first reached.</div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-section-title">&#x1F48E; Recover Gems</div>
+                <div style="display: grid; gap: 0;">
+                    <div class="setting-item" style="padding: 10px 0;">
+                        <div class="setting-label">Purpose</div>
+                        <div style="font-weight: 600;">Save a streak when you miss a day</div>
+                    </div>
+                    <div class="setting-item" style="padding: 10px 0;">
+                        <div class="setting-label">How to earn</div>
+                        <div style="font-weight: 600;">Complete all habits for 14 consecutive days</div>
+                    </div>
+                    <div class="setting-item" style="padding: 10px 0; border-bottom: none;">
+                        <div class="setting-label">When offered</div>
+                        <div style="font-weight: 600;">Automatically if streak would break</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button class="btn-primary" onclick="document.getElementById('streakRulesModal').classList.remove('active')">Got it</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gem Recovery Modal -->
+    <div class="modal" id="gemRecoveryModal">
+        <div class="modal-content" style="max-width:360px; text-align:center;">
+            <div class="gem-recovery-icon">&#x1F525;&#x1F48E;</div>
+            <div class="modal-header" style="justify-content:center; border-bottom:none; padding-bottom:0;">Streak at Risk!</div>
+            <div class="gem-recovery-streak" id="gemRecoveryStreakCount">0</div>
+            <div class="gem-recovery-habit">Day streak for <strong id="gemRecoveryHabitName"></strong></div>
+            <div class="gem-recovery-desc">You missed a day. Use a Recover Gem to preserve your streak?</div>
+            <div class="gem-recovery-gem-info">&#x1F48E; <span id="gemRecoveryGemCount">0</span> gem(s) available</div>
+            <div style="display:grid; gap:10px;">
+                <button class="btn-primary" style="padding:14px; font-size:15px;" onclick="useGemAndMarkDone()">&#x1F48E; Use Gem &amp; Save Streak</button>
+                <button class="btn-secondary" style="padding:12px;" onclick="skipGemAndMarkDone()">Continue Without Gem</button>
+            </div>
+            <div class="modal-footer" style="margin-top:8px;">
+                <button class="btn-secondary" onclick="closeGemRecoveryModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+<!-- ===== WORLD MAP MODAL ===== -->
+<div id="worldMapModal" style="display:none; position:fixed; inset:0; z-index:10000; align-items:center; justify-content:center; background:rgba(0,0,0,0.78); backdrop-filter:blur(10px);" onclick="if(event.target===this)closeWorldMap()">
+    <div class="wmm-card">
+        <div class="wmm-header">
+            <div style="display:flex; align-items:center; justify-content:space-between;">
+                <div>
+                    <div class="wmm-title">🗺️ World Map</div>
+                    <div class="wmm-subtitle" id="wmmSubtitle">Level 1 · Sandy Shores</div>
+                </div>
+                <button onclick="closeWorldMap()" style="background:rgba(255,255,255,0.08); border:none; color:rgba(200,205,240,0.7); font-size:18px; width:36px; height:36px; border-radius:50%; cursor:pointer; line-height:1;">✕</button>
+            </div>
+        </div>
+        <div class="wmm-progress-bar-wrap">
+            <div class="wmm-progress-label">
+                <span id="wmmProgressLabel">Progress to next island</span>
+                <span id="wmmProgressPct">0%</span>
+            </div>
+            <div class="wmm-progress-track">
+                <div class="wmm-progress-fill" id="wmmProgressFill" style="width:0%; background:linear-gradient(90deg,#6366f1,#a78bfa);"></div>
+            </div>
+            <div style="font-size:11px; color:rgba(160,165,200,0.5); margin-top:5px;" id="wmmProgressHint"></div>
+        </div>
+        <div class="wmm-islands-list" id="wmmIslandsList"></div>
+        <button class="wmm-close-btn" onclick="closeWorldMap()">Close</button>
+    </div>
+</div>
+
+<!-- ===== ISLAND UNLOCK POPUP ===== -->
+<div id="islandUnlockPopup" style="display:none; position:fixed; inset:0; z-index:10001; align-items:center; justify-content:center; background:rgba(0,0,0,0.82); backdrop-filter:blur(12px);">
+    <div class="iup-card">
+        <div class="iup-eyebrow">NEW ISLAND UNLOCKED</div>
+        <span class="iup-island-icon" id="iupIcon">🌿</span>
+        <div class="iup-headline">Welcome to</div>
+        <div class="iup-island-name" id="iupName">Verdant Vale</div>
+        <div class="iup-xp-pill">⚡ +100 Bonus XP</div>
+        <button class="iup-btn" id="iupBtn" onclick="closeIslandUnlockPopup()">Explore! 🚀</button>
+    </div>
+</div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
