@@ -1,0 +1,10 @@
+{
+  "name": "LifeScore",
+  "short_name": "LifeScore",
+  "description": "Personal Productivity Hub",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#f8f9fa",
+  "theme_color": "#1967d2",
+  "orientation": "portrait-primary"
+}

@@ -2,8 +2,12 @@
 <html lang="en" data-theme="light">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
     <title>LifeScore - Personal Productivity Hub</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1967d2">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <link rel="stylesheet" href="css/styles.css">
     <script>
         (function(){
@@ -1484,5 +1488,31 @@
         <button class="btn-secondary" onclick="closeSyncSettings()" style="width:100%; margin-top:12px;">Close</button>
     </div>
 </div>
+
+<!-- Mobile Bottom Navigation -->
+<nav id="mobileBottomNav" style="display:none;">
+    <button class="mobile-nav-item active" data-tab="today" onclick="switchTab('today')">
+        <span class="mobile-nav-icon">📅</span>
+        <span class="mobile-nav-label">Today</span>
+    </button>
+    <button class="mobile-nav-item" data-tab="habits" onclick="switchTab('habits')">
+        <span class="mobile-nav-icon">🎯</span>
+        <span class="mobile-nav-label">Habits</span>
+    </button>
+    <button class="mobile-nav-item" data-tab="scoring" onclick="switchTab('scoring')">
+        <span class="mobile-nav-icon">📈</span>
+        <span class="mobile-nav-label">Analytics</span>
+    </button>
+    <button class="mobile-nav-item" data-tab="island" onclick="switchTab('island')">
+        <span class="mobile-nav-icon">🏝️</span>
+        <span class="mobile-nav-label">Island</span>
+    </button>
+</nav>
+
+<script>
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+</script>
 </body>
 </html>

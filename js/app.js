@@ -1583,11 +1583,14 @@ function toggleActiveSessionMinimize() {
         function switchTab(key) {
             document.querySelectorAll('.sidebar-item').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            
-            const tabEl = document.querySelector(`[data-tab="${key}"]`);
-            if (!tabEl || !tabDefs[key]) return;
-            tabEl.classList.add('active');
+            document.querySelectorAll('.mobile-nav-item').forEach(t => t.classList.remove('active'));
+
+            const tabEl = document.querySelector(`.sidebar-item[data-tab="${key}"]`);
+            if (!tabDefs[key]) return;
+            if (tabEl) tabEl.classList.add('active');
             document.getElementById(tabDefs[key].id).classList.add('active');
+            const mobileNavEl = document.querySelector(`#mobileBottomNav .mobile-nav-item[data-tab="${key}"]`);
+            if (mobileNavEl) mobileNavEl.classList.add('active');
             localStorage.setItem('lifescore_current_tab_v4', key);
             
          if (key === 'today') renderTodayView();
@@ -6784,6 +6787,53 @@ async function syncNow() {
     closeSyncSettings();
     await pushToCloud();
 }
+
+// ── Pull-to-refresh: drag down on main content area → sync from cloud ──
+(function initPullToRefresh() {
+    let startY = 0, pulling = false, indicator = null;
+
+    function getScrollEl() { return document.querySelector('.main-content-area'); }
+
+    function createIndicator() {
+        if (indicator) return;
+        indicator = document.createElement('div');
+        indicator.id = 'ptr-indicator';
+        indicator.style.cssText = 'position:fixed;top:56px;left:50%;transform:translateX(-50%);background:var(--accent-color);color:#fff;font-size:12px;font-weight:700;padding:6px 16px;border-radius:0 0 20px 20px;z-index:9999;opacity:0;transition:opacity 0.2s;pointer-events:none;';
+        document.body.appendChild(indicator);
+    }
+
+    document.addEventListener('touchstart', e => {
+        const el = getScrollEl();
+        if (!el || el.scrollTop > 0) return;
+        startY = e.touches[0].clientY;
+        pulling = true;
+        createIndicator();
+    }, { passive: true });
+
+    document.addEventListener('touchmove', e => {
+        if (!pulling || !indicator) return;
+        const dy = e.touches[0].clientY - startY;
+        if (dy > 10) {
+            indicator.textContent = dy > 60 ? '↓ Release to refresh' : '↓ Pull to refresh';
+            indicator.style.opacity = Math.min(dy / 60, 1).toString();
+        }
+    }, { passive: true });
+
+    document.addEventListener('touchend', async e => {
+        if (!pulling || !indicator) return;
+        pulling = false;
+        const dy = e.changedTouches[0].clientY - startY;
+        if (dy > 60 && getBinId()) {
+            indicator.textContent = '⟳ Syncing…';
+            indicator.style.opacity = '1';
+            await pullFromCloud();
+            indicator.textContent = '✓ Synced';
+            setTimeout(() => { if (indicator) indicator.style.opacity = '0'; }, 1200);
+        } else {
+            if (indicator) indicator.style.opacity = '0';
+        }
+    });
+})();
 
 // Paste this in browser console to test connectivity:
 // testJsonBinConnection().then(r => console.log(r))
