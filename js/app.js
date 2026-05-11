@@ -1956,7 +1956,6 @@ function renderWeeklyProjectProgress() {
             const focusXpEl = document.getElementById('todayFocusXp');
             if (focusXpEl) focusXpEl.textContent = todayXP.toFixed(1);
             refreshTotalXPDisplay();
-            renderWeeklyProjectProgress();
         }
 
         function renderTodayHabit(habit, dateStr) {
@@ -2038,12 +2037,14 @@ function renderWeeklyProjectProgress() {
             const todayAbbr = DAY_ABBRS[displayDate.getDay()];
             const plan = getTodayPlan(dateStr);
 
-            // Build scheduled session blocks from projects
+            // Build scheduled session blocks from projects (each 60-min slot = one block)
             const scheduledBlocks = [];
             projects.forEach(p => {
                 (p.scheduledSessions || []).forEach((s, idx) => {
                     if (s.day === todayAbbr) {
-                        scheduledBlocks.push({ type: 'session', project: p, session: s, key: `s_${p.id}_${idx}` });
+                        expandTo60MinBlocks(s.startTime, s.endTime).forEach((block, bi) => {
+                            scheduledBlocks.push({ type: 'session', project: p, session: block, key: `s_${p.id}_${idx}_${bi}` });
+                        });
                     }
                 });
             });
@@ -2052,7 +2053,11 @@ function renderWeeklyProjectProgress() {
             if (plan) {
                 (plan.oneOffSessions || []).forEach((s, idx) => {
                     const p = projects.find(x => x.id === s.projectId);
-                    if (p) scheduledBlocks.push({ type: 'session', project: p, session: { day: todayAbbr, startTime: s.startTime, endTime: s.endTime }, key: `oneoff_${idx}`, isOneOff: true });
+                    if (p) {
+                        expandTo60MinBlocks(s.startTime, s.endTime).forEach((block, bi) => {
+                            scheduledBlocks.push({ type: 'session', project: p, session: block, key: `oneoff_${idx}_${bi}`, isOneOff: true });
+                        });
+                    }
                 });
             }
 
@@ -2084,15 +2089,6 @@ function renderWeeklyProjectProgress() {
 
             let html = '';
 
-            // Focus bar at top
-            const sessionLabel = sessionCount === 1 ? '1 session' : `${sessionCount} sessions`;
-            html += `<div class="timeline-focus-bar" onclick="openStartSessionModal()">
-                <span class="timeline-focus-icon">&#x1F3AF;</span>
-                <span class="timeline-focus-label">Focus Sessions</span>
-                <span class="timeline-focus-meta">${creditHours}h today &middot; ${sessionLabel}</span>
-                <span class="timeline-focus-arrow">&#x276F;</span>
-            </div>`;
-
             // Scheduled items
             if (scheduledItems.length > 0) {
                 scheduledItems.forEach(item => {
@@ -2113,6 +2109,7 @@ function renderWeeklyProjectProgress() {
             }
 
             el.innerHTML = html;
+            initHabitSwipes(el);
         }
 
         function renderTimelineItem(item, dateStr) {
@@ -2129,28 +2126,35 @@ function renderWeeklyProjectProgress() {
                 const streak = getHabitStreak(habit.id);
                 const streakHtml = streak >= 1 ? `<span class="habit-streak-badge">&#x1F525; ${streak}</span>` : '';
                 const durationHtml = habit.duration ? `<span class="timeline-duration">${habit.duration}m</span>` : '';
-                return `<div class="timeline-item timeline-item--habit ${stateClass}" onclick="openTodayHabitAction(${habit.id}, '${dateStr}')">
-                    <div class="timeline-time">${item.time || ''}</div>
-                    <div class="timeline-icon">${habit.icon || '🎯'}</div>
-                    <div class="timeline-body">
-                        <div class="timeline-name">${escapeHtml(habit.name)}</div>
-                        <div class="timeline-meta">${diffDisplay} · ${xp} XP ${streakHtml} ${durationHtml}</div>
+                return `<div class="timeline-item timeline-item--habit habit-swipe-row ${stateClass}" data-habit-id="${habit.id}" data-date="${dateStr}" data-measurable="${habit.measurable ? '1' : '0'}">
+                    <div class="swipe-bg-right">✓ Done</div>
+                    <div class="swipe-bg-left">
+                        <div class="swipe-skip">— Skip</div>
+                        <div class="swipe-fail">✗ No</div>
                     </div>
-                    <div class="timeline-status ${stateIconClass}">${stateIcon}</div>
+                    <div class="swipe-content" onclick="openTodayHabitAction(${habit.id}, '${dateStr}')">
+                        <div class="timeline-time">${item.time || ''}</div>
+                        <div class="timeline-icon">${habit.icon || '🎯'}</div>
+                        <div class="timeline-body">
+                            <div class="timeline-name">${escapeHtml(habit.name)}</div>
+                            <div class="timeline-meta">${diffDisplay} · ${xp} XP ${streakHtml} ${durationHtml}</div>
+                        </div>
+                        <div class="timeline-status ${stateIconClass}">${stateIcon}</div>
+                    </div>
                 </div>`;
             } else {
-                // session block
+                // session block — "Start Session" button
                 const p = item.project;
                 const s = item.session;
                 const timeRange = `${s.startTime}–${s.endTime}`;
-                return `<div class="timeline-item timeline-item--session" onclick="openStartSessionModalWithProject(${p.id})">
+                return `<div class="timeline-item timeline-item--session" style="cursor:default;">
                     <div class="timeline-time">${s.startTime}</div>
                     <div class="timeline-icon" style="color:${p.color || 'var(--accent-color)'};">${p.icon || '📁'}</div>
                     <div class="timeline-body">
                         <div class="timeline-name">${escapeHtml(p.name)}</div>
                         <div class="timeline-meta">${timeRange}${item.isOneOff ? ' · one-off' : ''}</div>
                     </div>
-                    <div class="timeline-status" style="font-size:12px; color:var(--text-secondary);">&#x276F;</div>
+                    <button class="btn-primary" onclick="event.stopPropagation(); openStartSessionModalWithProject(${p.id})" style="padding:5px 12px; font-size:12px; white-space:nowrap; flex-shrink:0; border-radius:20px;">Start</button>
                 </div>`;
             }
         }
@@ -2161,6 +2165,122 @@ function renderWeeklyProjectProgress() {
                 const sel = document.getElementById('sessionProjectSelect');
                 if (sel) sel.value = projectId;
             }, 50);
+        }
+
+        function expandTo60MinBlocks(startTime, endTime) {
+            const blocks = [];
+            let [sh, sm] = startTime.split(':').map(Number);
+            const [eh, em] = endTime.split(':').map(Number);
+            const endTotal = eh * 60 + em;
+            while (sh * 60 + sm < endTotal) {
+                const blockEnd = Math.min(sh * 60 + sm + 60, endTotal);
+                const beh = Math.floor(blockEnd / 60);
+                const bem = blockEnd % 60;
+                blocks.push({
+                    startTime: `${String(sh).padStart(2,'0')}:${String(sm).padStart(2,'0')}`,
+                    endTime: `${String(beh).padStart(2,'0')}:${String(bem).padStart(2,'0')}`
+                });
+                sh = beh; sm = bem;
+            }
+            return blocks;
+        }
+
+        function _resetSwipe(content, callback) {
+            if (!content) return;
+            content.style.transition = 'transform 0.25s ease';
+            content.style.transform = 'translateX(0)';
+            if (callback) setTimeout(callback, 260);
+        }
+
+        function initHabitSwipes(container) {
+            container.querySelectorAll('.habit-swipe-row').forEach(row => {
+                const habitId = parseInt(row.dataset.habitId);
+                const dateStr = row.dataset.date;
+                const isMeasurable = row.dataset.measurable === '1';
+                const content = row.querySelector('.swipe-content');
+                if (!content) return;
+
+                let startX = 0, startY = 0, dx = 0, swiping = false, revealed = false;
+
+                row.addEventListener('touchstart', e => {
+                    if (e.touches.length !== 1) return;
+                    startX = e.touches[0].clientX;
+                    startY = e.touches[0].clientY;
+                    dx = 0; swiping = false;
+                    if (!revealed) content.style.transition = 'none';
+                }, { passive: true });
+
+                row.addEventListener('touchmove', e => {
+                    const x = e.touches[0].clientX - startX;
+                    const y = e.touches[0].clientY - startY;
+                    if (!swiping) {
+                        if (Math.abs(y) > Math.abs(x) + 5 && !revealed) return;
+                        swiping = true;
+                    }
+                    dx = x;
+                    if (revealed) {
+                        content.style.transform = `translateX(${Math.min(0, -160 + Math.max(0, x))}px)`;
+                    } else {
+                        content.style.transform = `translateX(${Math.max(-160, Math.min(200, x))}px)`;
+                    }
+                }, { passive: true });
+
+                row.addEventListener('touchend', () => {
+                    if (!swiping && !revealed) return;
+                    if (revealed) {
+                        if (dx > 60) {
+                            _resetSwipe(content, () => { revealed = false; });
+                        } else {
+                            content.style.transition = 'transform 0.2s ease';
+                            content.style.transform = 'translateX(-160px)';
+                        }
+                        return;
+                    }
+                    if (dx > 60) {
+                        // Right swipe = complete
+                        content.style.transition = 'transform 0.22s ease';
+                        content.style.transform = 'translateX(110%)';
+                        setTimeout(() => {
+                            const habit = habits.find(h => h.id === habitId);
+                            if (habit && !isMeasurable) {
+                                _executeHabitDone(habit, dateStr, false);
+                            } else if (habit) {
+                                _resetSwipe(content, null);
+                                openTodayHabitAction(habitId, dateStr);
+                            }
+                        }, 230);
+                    } else if (dx < -60) {
+                        // Left swipe = reveal skip/fail
+                        content.style.transition = 'transform 0.2s ease';
+                        content.style.transform = 'translateX(-160px)';
+                        revealed = true;
+                    } else {
+                        _resetSwipe(content, () => { revealed = false; });
+                    }
+                });
+            });
+
+            container.querySelectorAll('.swipe-skip').forEach(btn => {
+                btn.addEventListener('click', e => {
+                    e.stopPropagation();
+                    const row = btn.closest('.habit-swipe-row');
+                    if (!row) return;
+                    const content = row.querySelector('.swipe-content');
+                    _resetSwipe(content, null);
+                    skipHabitForDate(parseInt(row.dataset.habitId), row.dataset.date);
+                });
+            });
+
+            container.querySelectorAll('.swipe-fail').forEach(btn => {
+                btn.addEventListener('click', e => {
+                    e.stopPropagation();
+                    const row = btn.closest('.habit-swipe-row');
+                    if (!row) return;
+                    const content = row.querySelector('.swipe-content');
+                    _resetSwipe(content, null);
+                    markHabitNotDone(parseInt(row.dataset.habitId), row.dataset.date);
+                });
+            });
         }
 
         // ========================================
@@ -4171,14 +4291,19 @@ function unskipTask(taskId) {
                 const timeLabel = formatReminderTime(habit.reminderTime);
                 const project = projects.find(p => p.id === habit.project);
                 const todayLogState = getHabitLogState(habitLogs[habit.id]?.[getLocalDateStr(today)]);
-                html += `<div class="habit-log-name" data-habit-id="${habit.id}">
-                    <span class="habit-drag-handle" draggable="true" data-habit-id="${habit.id}" title="Drag to reorder" onclick="event.stopPropagation()">⋮⋮</span>
-                    <span style="margin-right: 8px;">${habit.icon || '🎯'}</span>
-                    <span class="habit-name-text" title="${escapeHtml(habit.name)}" onclick="event.stopPropagation(); openHabitAnalyticsModal(${habit.id}, event)" style="cursor: pointer;">${escapeHtml(habit.name)}</span>
-                    ${timeLabel ? `<span class="time-chip">${timeLabel}</span>` : ''}<span class="weight-badge">${(habit.difficulty || 'medium')[0].toUpperCase() + (habit.difficulty || 'medium').slice(1)} · ${getHabitXP(habit)} XP</span>
-                    <button class="more-btn" onclick="event.preventDefault(); event.stopPropagation(); markHabitNotDone(${habit.id}, '${getLocalDateStr(today)}')" title="Mark today not done">✗</button>
-                    <button class="more-btn" style="color:var(--text-secondary);" onclick="event.preventDefault(); event.stopPropagation(); skipHabitForDate(${habit.id}, '${getLocalDateStr(today)}')" title="Skip today">—</button>
-                    <button class="more-btn" onclick="event.preventDefault(); event.stopPropagation(); editHabit(${habit.id})" style="margin-left: auto;">⋮</button>
+                html += `<div class="habit-log-name habit-swipe-row" data-habit-id="${habit.id}" data-date="${getLocalDateStr(today)}" data-measurable="${habit.measurable ? '1' : '0'}">
+                    <div class="swipe-bg-right">✓ Done</div>
+                    <div class="swipe-bg-left">
+                        <div class="swipe-skip">— Skip</div>
+                        <div class="swipe-fail">✗ No</div>
+                    </div>
+                    <div class="swipe-content">
+                        <span class="habit-drag-handle" draggable="true" data-habit-id="${habit.id}" title="Drag to reorder" onclick="event.stopPropagation()">⋮⋮</span>
+                        <span style="margin-right: 8px;">${habit.icon || '🎯'}</span>
+                        <span class="habit-name-text" title="${escapeHtml(habit.name)}" onclick="event.stopPropagation(); openHabitAnalyticsModal(${habit.id}, event)" style="cursor: pointer;">${escapeHtml(habit.name)}</span>
+                        ${timeLabel ? `<span class="time-chip">${timeLabel}</span>` : ''}<span class="weight-badge">${(habit.difficulty || 'medium')[0].toUpperCase() + (habit.difficulty || 'medium').slice(1)} · ${getHabitXP(habit)} XP</span>
+                        <button class="more-btn" onclick="event.preventDefault(); event.stopPropagation(); editHabit(${habit.id})" style="margin-left: auto;">⋮</button>
+                    </div>
                 </div>`;
                 // Removed: Time, Project, Type, Completion columns
                 
@@ -4356,6 +4481,7 @@ function unskipTask(taskId) {
             
             updateHabitScores();
             renderMobileHabitCards(last7Days, filteredHabits, todayStr);
+            initHabitSwipes(grid);
         }
 
         function showHabitValueModal(habitId, dateStr) {
@@ -6448,6 +6574,7 @@ function saveWeightAdjustments() {}
                 return;
             }
             list.innerHTML = projects.map(p => `
+                <div id="proj-entry-${p.id}">
                 <div draggable="true"
                      ondragstart="projDragStart(${p.id})"
                      ondragover="projDragOver(event,${p.id})"
@@ -6466,6 +6593,7 @@ function saveWeightAdjustments() {}
                             onkeydown="if(event.key==='Enter'){updateProjectTarget(${p.id},this.value);this.blur();event.preventDefault();}">
                         <span style="font-size:12px; color:var(--text-secondary); white-space:nowrap;">hrs/wk</span>
                     </div>
+                    <button onclick="toggleSchedulePanel(${p.id})" style="background:none; border:1px solid var(--border-color); border-radius:6px; cursor:pointer; font-size:16px; color:var(--text-secondary); padding:2px 8px; line-height:1.4;" title="Scheduled sessions">🕐</button>
                     <div style="position:relative; flex-shrink:0;">
                         <button onclick="toggleProjectMenu(${p.id})" style="background:none; border:1px solid transparent; border-radius:6px; cursor:pointer; font-size:20px; color:var(--text-secondary); padding:2px 8px; line-height:1.2;" title="Options">⋮</button>
                         <div id="proj-menu-${p.id}" style="display:none; position:absolute; right:0; top:100%; margin-top:4px; background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:8px; box-shadow:0 4px 16px var(--shadow); z-index:300; min-width:130px; overflow:hidden;">
@@ -6473,8 +6601,74 @@ function saveWeightAdjustments() {}
                             <button onclick="deleteProjectFromRegistry(${p.id})" style="display:block; width:100%; text-align:left; padding:10px 14px; font-size:14px; background:none; border:none; cursor:pointer; color:#dc2626;">🗑 Delete</button>
                         </div>
                     </div>
+                </div>
+                <div id="proj-schedule-panel-${p.id}" style="display:none; padding:12px 8px 14px; background:var(--bg-tertiary); border-bottom:1px solid var(--border-color); border-left:3px solid var(--accent-color);">
+                    <div id="proj-sessions-chips-${p.id}" style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px;"></div>
+                    <div style="display:grid; grid-template-columns:auto 1fr 1fr auto; gap:6px; align-items:end;">
+                        <div>
+                            <div style="font-size:11px; color:var(--text-secondary); margin-bottom:2px;">Day</div>
+                            <select id="reg-sess-day-${p.id}" style="padding:5px 6px; font-size:13px; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-secondary); color:var(--text-primary);">
+                                <option>Mon</option><option>Tue</option><option>Wed</option><option>Thu</option><option>Fri</option><option>Sat</option><option>Sun</option>
+                            </select>
+                        </div>
+                        <div>
+                            <div style="font-size:11px; color:var(--text-secondary); margin-bottom:2px;">Start</div>
+                            <input type="time" id="reg-sess-start-${p.id}" style="padding:5px 6px; font-size:13px; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-secondary); color:var(--text-primary); width:100%;">
+                        </div>
+                        <div>
+                            <div style="font-size:11px; color:var(--text-secondary); margin-bottom:2px;">End</div>
+                            <input type="time" id="reg-sess-end-${p.id}" style="padding:5px 6px; font-size:13px; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-secondary); color:var(--text-primary); width:100%;">
+                        </div>
+                        <button onclick="addRegistrySession(${p.id})" style="padding:5px 12px; font-size:13px; background:var(--accent-color); color:#fff; border:none; border-radius:6px; cursor:pointer; height:32px; align-self:end;">+ Add</button>
+                    </div>
+                </div>
                 </div>`).join('');
+            projects.forEach(p => renderRegistrySessions(p.id));
             renderProjectRegistryTotal();
+        }
+
+        function toggleSchedulePanel(id) {
+            const panel = document.getElementById(`proj-schedule-panel-${id}`);
+            if (!panel) return;
+            const open = panel.style.display !== 'none';
+            panel.style.display = open ? 'none' : 'block';
+        }
+
+        function renderRegistrySessions(id) {
+            const el = document.getElementById(`proj-sessions-chips-${id}`);
+            if (!el) return;
+            const p = projects.find(x => x.id === id);
+            if (!p || !(p.scheduledSessions || []).length) {
+                el.innerHTML = '<span style="font-size:12px; color:var(--text-secondary);">No sessions yet.</span>';
+                return;
+            }
+            el.innerHTML = p.scheduledSessions.map((s, i) => {
+                const blocks = expandTo60MinBlocks(s.startTime, s.endTime).length;
+                const label = `${s.day} ${s.startTime}–${s.endTime}` + (blocks > 1 ? ` (${blocks})` : '');
+                return `<span style="display:inline-flex; align-items:center; gap:5px; padding:3px 10px; background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:20px; font-size:12px;">${label}<button onclick="removeRegistrySession(${id},${i})" style="background:none; border:none; color:var(--text-secondary); cursor:pointer; font-size:14px; padding:0; line-height:1;">×</button></span>`;
+            }).join('');
+        }
+
+        function addRegistrySession(id) {
+            const day = document.getElementById(`reg-sess-day-${id}`)?.value;
+            const startTime = document.getElementById(`reg-sess-start-${id}`)?.value;
+            const endTime = document.getElementById(`reg-sess-end-${id}`)?.value;
+            if (!startTime || !endTime) return alert('Please set start and end times');
+            if (startTime >= endTime) return alert('End time must be after start time');
+            const p = projects.find(x => x.id === id);
+            if (!p) return;
+            if (!p.scheduledSessions) p.scheduledSessions = [];
+            p.scheduledSessions.push({ day, startTime, endTime });
+            saveProjects();
+            renderRegistrySessions(id);
+        }
+
+        function removeRegistrySession(id, index) {
+            const p = projects.find(x => x.id === id);
+            if (!p || !p.scheduledSessions) return;
+            p.scheduledSessions.splice(index, 1);
+            saveProjects();
+            renderRegistrySessions(id);
         }
         function addProjectToRegistry() {
             const inp = document.getElementById('projectRegistryNewName');

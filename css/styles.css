@@ -3567,3 +3567,98 @@
     display: flex;
     gap: 4px;
 }
+
+/* ===================================================
+   HABIT SWIPE GESTURES
+   =================================================== */
+.habit-swipe-row {
+    position: relative;
+    overflow: hidden;
+}
+
+/* Habit log name override: remove its own padding so swipe-content owns it */
+.habit-log-name.habit-swipe-row {
+    padding: 0;
+    display: block;
+}
+
+/* Timeline item override */
+.timeline-item.habit-swipe-row {
+    padding: 0;
+    display: block;
+}
+
+.swipe-bg-right {
+    position: absolute;
+    inset: 0;
+    background: #1E8E3E;
+    display: flex;
+    align-items: center;
+    padding-left: 20px;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 700;
+    z-index: 0;
+}
+
+.swipe-bg-left {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: stretch;
+    justify-content: flex-end;
+    z-index: 0;
+}
+
+.swipe-skip {
+    width: 80px;
+    background: #6b7280;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    user-select: none;
+}
+
+.swipe-fail {
+    width: 80px;
+    background: #D93025;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    user-select: none;
+}
+
+/* Content layer that slides */
+.swipe-content {
+    position: relative;
+    z-index: 2;
+    background: var(--bg-secondary);
+    transform: translateX(0);
+    will-change: transform;
+    touch-action: pan-y;
+    /* Restore flex layout for habit-log-name rows */
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 8px;
+    width: 100%;
+    min-width: 0;
+}
+
+/* Timeline item swipe-content needs timeline spacing */
+.timeline-item.habit-swipe-row .swipe-content {
+    gap: 10px;
+    padding: 10px 14px;
+    cursor: pointer;
+}
+
+/* Session block in timeline: no pointer on outer shell */
+.timeline-item--session { cursor: default !important; }
