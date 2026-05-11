@@ -30,6 +30,8 @@
     weekdayDefinition: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
 };
         let dailySessionOverrides = {};
+        let weekOverrides = {};
+        let _movePickerSession = null;
         let todayPointsState = { sessionPoints: 0, habitPoints: 0, totalPoints: 0 };
         let sessionEndSound = 'bellChime';
         let dayCutoffTime = localStorage.getItem('lifescore_day_cutoff_v4') || '03:00';
@@ -132,6 +134,7 @@ let selectedProjectColor = '#1967d2';
             loadWorldProgress();
             migrateData();
             recomputeAllStreaks();
+            autoSkipPastHabits();
             checkWorldIslandUnlocks(false);
             applySettings();
             renderTabs();
@@ -279,6 +282,7 @@ let selectedProjectColor = '#1967d2';
             } catch (e) {
                 settings = normalizeSettings({});
             }
+            weekOverrides = asObject(loadStoredJson('lifescore_weekoverrides_v4', {}));
         }
 
         function normalizeSettings(parsed = {}) {
@@ -2115,15 +2119,18 @@ function renderWeeklyProjectProgress() {
             const todayAbbr = DAY_ABBRS[displayDate.getDay()];
             const plan = getTodayPlan(dateStr);
 
-            // Build scheduled session blocks from projects (each 60-min slot = one block)
+            // Build scheduled session blocks from projects, applying week overrides
             const scheduledBlocks = [];
+            const _weekKey = getISOWeekKey(new Date(dateStr + 'T12:00:00'));
+            const _wkMoved = (weekOverrides[_weekKey] || {}).moved || [];
             projects.forEach(p => {
                 (p.scheduledSessions || []).forEach((s, idx) => {
-                    if (s.day === todayAbbr) {
-                        expandTo60MinBlocks(s.startTime, s.endTime).forEach((block, bi) => {
-                            scheduledBlocks.push({ type: 'session', project: p, session: block, key: `s_${p.id}_${idx}_${bi}` });
-                        });
-                    }
+                    const ov = _wkMoved.find(m => m.projectId === p.id && m.originalDay === s.day && m.startTime === s.startTime && m.endTime === s.endTime);
+                    const showDay = ov ? ov.targetDay : s.day;
+                    if (showDay !== todayAbbr) return;
+                    expandTo60MinBlocks(s.startTime, s.endTime).forEach((block, bi) => {
+                        scheduledBlocks.push({ type: 'session', project: p, session: block, key: `s_${p.id}_${idx}_${bi}`, isMoved: !!ov, originalDay: s.day, sessStartTime: s.startTime, sessEndTime: s.endTime });
+                    });
                 });
             });
 
@@ -2315,16 +2322,23 @@ function renderWeeklyProjectProgress() {
                 // session block
                 const p = item.project;
                 const s = item.session;
+                const origDay = item.originalDay || '';
+                const sessStart = item.sessStartTime || s.startTime;
+                const sessEnd = item.sessEndTime || s.endTime;
+                const movedBadge = item.isMoved ? `<span class="session-moved-badge">↗ Moved</span>` : '';
+                const metaLabel = item.isOneOff ? 'one-off' : (item.isMoved ? `moved from ${origDay}` : 'scheduled');
+                const moveBtn = item.isOneOff ? '' : `<button onclick="event.stopPropagation(); openMoveSessionPicker(${p.id},'${origDay || item.session.startTime}','${sessStart}','${sessEnd}')" style="background:none;border:none;font-size:11px;color:var(--accent-color);cursor:pointer;padding:0;white-space:nowrap;">→ Move</button>`;
                 return `<div class="timeline-item timeline-item--session" style="cursor:default;" data-time="${s.startTime}" data-date="${dateStr}" data-project-id="${p.id}">
                     <div class="timeline-time">${s.startTime}–${s.endTime}</div>
                     <div class="timeline-icon" style="color:${p.color || 'var(--accent-color)'};">${p.icon || '📁'}</div>
                     <div class="timeline-body">
-                        <div class="timeline-name">${escapeHtml(p.name)}</div>
-                        <div class="timeline-meta">${item.isOneOff ? 'one-off' : 'scheduled'}</div>
+                        <div class="timeline-name">${escapeHtml(p.name)} ${movedBadge}</div>
+                        <div class="timeline-meta">${metaLabel}</div>
                     </div>
                     <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;flex-shrink:0;">
                         <button class="btn-primary" onclick="event.stopPropagation(); startTimedSessionDirect(${p.id},'${s.startTime}','${s.endTime}')" style="padding:5px 12px; font-size:12px; white-space:nowrap; border-radius:20px;">Start</button>
                         <button onclick="event.stopPropagation(); openLogMissedModal(${p.id},'${s.startTime}','${s.endTime}')" style="background:none;border:none;font-size:11px;color:var(--text-secondary);cursor:pointer;padding:0;text-decoration:underline;white-space:nowrap;">Log Missed</button>
+                        ${moveBtn}
                     </div>
                 </div>`;
             }
@@ -2436,6 +2450,162 @@ function renderWeeklyProjectProgress() {
         function minToTime(min) {
             const clamped = ((min % 1440) + 1440) % 1440;
             return `${String(Math.floor(clamped / 60)).padStart(2,'0')}:${String(clamped % 60).padStart(2,'0')}`;
+        }
+
+        // Returns "YYYY-Www" ISO week key for a given date
+        function getISOWeekKey(date = new Date()) {
+            const d = new Date(date); d.setHours(12, 0, 0, 0);
+            d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7);
+            const w1 = new Date(d.getFullYear(), 0, 4);
+            const wn = 1 + Math.round(((d - w1) / 86400000 - 3 + (w1.getDay() + 6) % 7) / 7);
+            return `${d.getFullYear()}-W${String(wn).padStart(2, '0')}`;
+        }
+
+        // Returns array of {abbr, date, dayNum, isToday, isPast} for Mon–Sun of the current week
+        function getWeekDays(refDate = new Date()) {
+            const d = new Date(refDate); d.setHours(0, 0, 0, 0);
+            const mon = new Date(d);
+            mon.setDate(d.getDate() - (d.getDay() + 6) % 7);
+            const todayStr = getLocalDateStr(new Date(), true);
+            return ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((abbr, i) => {
+                const day = new Date(mon); day.setDate(mon.getDate() + i);
+                const dateStr = getLocalDateStr(day);
+                return { abbr, date: dateStr, dayNum: day.getDate(), isToday: dateStr === todayStr, isPast: dateStr < todayStr };
+            });
+        }
+
+        function saveWeekOverrides() {
+            localStorage.setItem('lifescore_weekoverrides_v4', JSON.stringify(weekOverrides));
+        }
+
+        // Auto-skip habits for past days in the current week that were never acted on
+        function autoSkipPastHabits() {
+            const todayStr = getLocalDateStr(new Date(), true);
+            const weekDays = getWeekDays(new Date());
+            let changed = false;
+            weekDays.forEach(({ date: dateStr }) => {
+                if (dateStr >= todayStr) return;
+                habits.forEach(h => {
+                    if (h.period === 'weekly' || h.period === 'monthly') return;
+                    const d = new Date(dateStr + 'T12:00:00');
+                    const habitDays = h.customDays || [0,1,2,3,4,5,6];
+                    if (!habitDays.includes(d.getDay())) return;
+                    if (h.startTrackingDate && dateStr < h.startTrackingDate) return;
+                    const log = habitLogs[h.id]?.[dateStr];
+                    if (getHabitLogState(log) !== 'blank') return;
+                    setHabitLogState(h.id, dateStr, 'skipped', 0);
+                    changed = true;
+                });
+            });
+            if (changed) saveHabitLogs();
+        }
+
+        // ---- Weekly Template ----
+        function openWeeklyTemplate() {
+            renderWeeklyTemplate();
+            document.getElementById('weeklyTemplateModal').classList.add('active');
+        }
+        function closeWeeklyTemplate() {
+            document.getElementById('weeklyTemplateModal').classList.remove('active');
+        }
+        function renderWeeklyTemplate() {
+            const weekDays = getWeekDays(new Date());
+            const weekKey = getISOWeekKey(new Date());
+            const overrides = (weekOverrides[weekKey] || {}).moved || [];
+            const dayJsMap = { Mon:1, Tue:2, Wed:3, Thu:4, Fri:5, Sat:6, Sun:0 };
+
+            const html = weekDays.map(({ abbr, dayNum, isToday, isPast, date: dateStr }) => {
+                const jsDay = dayJsMap[abbr];
+                // Habits for this day
+                const dayHabits = habits.filter(h => {
+                    if (h.period === 'weekly' || h.period === 'monthly') return false;
+                    return (h.customDays || [0,1,2,3,4,5,6]).includes(jsDay);
+                }).sort((a, b) => (a.reminderTime || 'ZZ').localeCompare(b.reminderTime || 'ZZ'));
+                // Sessions for this day (with overrides applied)
+                const daySessions = [];
+                projects.forEach(p => {
+                    (p.scheduledSessions || []).forEach((s) => {
+                        const ov = overrides.find(m => m.projectId === p.id && m.originalDay === s.day && m.startTime === s.startTime && m.endTime === s.endTime);
+                        if (ov ? ov.targetDay !== abbr : s.day !== abbr) return;
+                        daySessions.push({ project: p, session: s, isMoved: !!ov, originalDay: s.day });
+                    });
+                });
+                daySessions.sort((a, b) => (a.session.startTime || '').localeCompare(b.session.startTime || ''));
+
+                const habitsHtml = dayHabits.map(h => {
+                    const log = habitLogs[h.id]?.[dateStr];
+                    const state = getHabitLogState(log);
+                    const si = state === 'done' ? '✓' : state === 'failed' ? '✗' : state === 'skipped' ? '—' : '';
+                    const dim = (state === 'done' || state === 'skipped' || state === 'failed') ? 'opacity:0.55;' : '';
+                    return `<div class="wt-item wt-item--habit" style="${dim}">
+                        <span>${h.icon || '🎯'}</span>
+                        <span class="wt-name">${escapeHtml(h.name)}${si ? ` <b>${si}</b>` : ''}</span>
+                        ${h.reminderTime ? `<span class="wt-time">${h.reminderTime}</span>` : ''}
+                    </div>`;
+                }).join('');
+
+                const sessHtml = daySessions.map(({ project: p, session: s, isMoved, originalDay }) =>
+                    `<div class="wt-item wt-item--session">
+                        <span>${p.icon || '📁'}</span>
+                        <span class="wt-name">${escapeHtml(p.name)}${isMoved ? ' <span class="wt-moved">↗</span>' : ''}</span>
+                        <span class="wt-time">${s.startTime}–${s.endTime}</span>
+                        <button class="wt-move-btn" onclick="openMoveSessionPicker(${p.id},'${originalDay}','${s.startTime}','${s.endTime}')" title="Move">→</button>
+                    </div>`
+                ).join('');
+
+                const empty = !dayHabits.length && !daySessions.length ? `<div class="wt-empty">Free</div>` : '';
+                return `<div class="wt-col${isToday ? ' wt-today' : ''}${isPast ? ' wt-past' : ''}">
+                    <div class="wt-header"><div class="wt-abbr">${abbr}</div><div class="wt-daynum">${dayNum}</div></div>
+                    <div class="wt-body">${habitsHtml}${daySessions.length ? `<hr class="wt-hr">${sessHtml}` : ''}${empty}</div>
+                </div>`;
+            }).join('');
+
+            const el = document.getElementById('weeklyTemplateGrid');
+            if (el) el.innerHTML = html;
+        }
+
+        // ---- Move Session Picker ----
+        function openMoveSessionPicker(projectId, originalDay, startTime, endTime) {
+            _movePickerSession = { projectId, originalDay, startTime, endTime };
+            const weekKey = getISOWeekKey(new Date());
+            const moved = (weekOverrides[weekKey] || {}).moved || [];
+            // Find current effective day
+            const existing = moved.find(m => m.projectId === projectId && m.originalDay === originalDay && m.startTime === startTime && m.endTime === endTime);
+            const effectiveDay = existing ? existing.targetDay : originalDay;
+
+            const weekDays = getWeekDays(new Date());
+            const grid = document.getElementById('moveSessionDayGrid');
+            if (!grid) return;
+            grid.innerHTML = weekDays.map(({ abbr, dayNum, isToday }) => {
+                const isCurrent = abbr === effectiveDay;
+                return `<button class="move-day-btn${isCurrent ? ' move-day-current' : ''}${isToday ? ' move-day-today' : ''}" onclick="moveSessionToDay('${abbr}')">
+                    <div style="font-weight:700;font-size:13px;">${abbr}</div>
+                    <div style="font-size:11px;color:var(--text-secondary);">${dayNum}</div>
+                </button>`;
+            }).join('');
+            document.getElementById('moveSessionPickerModal').classList.add('active');
+        }
+        function closeMoveSessionPicker() {
+            document.getElementById('moveSessionPickerModal')?.classList.remove('active');
+            _movePickerSession = null;
+        }
+        function moveSessionToDay(targetDay) {
+            if (!_movePickerSession) return;
+            const { projectId, originalDay, startTime, endTime } = _movePickerSession;
+            const weekKey = getISOWeekKey(new Date());
+            if (!weekOverrides[weekKey]) weekOverrides[weekKey] = { moved: [] };
+            // Remove any existing override for this session
+            weekOverrides[weekKey].moved = weekOverrides[weekKey].moved.filter(m =>
+                !(m.projectId === projectId && m.originalDay === originalDay && m.startTime === startTime && m.endTime === endTime)
+            );
+            // Add new override (if not moving back to original)
+            if (targetDay !== originalDay) {
+                weekOverrides[weekKey].moved.push({ projectId, originalDay, targetDay, startTime, endTime });
+            }
+            saveWeekOverrides();
+            closeMoveSessionPicker();
+            renderTodayView();
+            if (document.getElementById('weeklyTemplateModal')?.classList.contains('active')) renderWeeklyTemplate();
         }
 
         function expandTo60MinBlocks(startTime, endTime) {
@@ -7901,6 +8071,7 @@ const SYNC_KEYS = [
     'lifescore_island_v4',
     'lifescore_world_v4',
     'lifescore_daily_session_overrides_v4',
+    'lifescore_weekoverrides_v4',
 ];
 
 let _cloudSyncTimer = null;
