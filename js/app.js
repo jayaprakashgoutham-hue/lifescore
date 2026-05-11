@@ -54,6 +54,7 @@
         };
         let activeHabitResize = null;
         let currentWeekOffset = 0;
+        let _projProgressWeekOffset = 0;
         let todayViewMode = localStorage.getItem('lifescore_today_view_mode_v4') || 'list';
         let notes = [];
 let currentNoteId = null;
@@ -1761,6 +1762,8 @@ if (key === 'scoring') {
         datePicker.onchange = calculateScores;
     }
     setTimeout(() => {
+        _projProgressWeekOffset = 0;
+        renderWeeklyProjectProgress();
         calculateScores();
         updateChart();
         renderSessionAnalytics();
@@ -1894,6 +1897,18 @@ function getWeekBoundary() {
     return { weekStart, weekEnd };
 }
 
+function getWeekBoundaryWithOffset(offset) {
+    const d = new Date();
+    d.setDate(d.getDate() + offset * 7);
+    d.setHours(0, 0, 0, 0);
+    const mon = new Date(d);
+    mon.setDate(d.getDate() - (d.getDay() + 6) % 7);
+    const sun = new Date(mon);
+    sun.setDate(mon.getDate() + 6);
+    sun.setHours(23, 59, 59, 999);
+    return { weekStart: mon, weekEnd: sun };
+}
+
 function getWeeklyHoursPerProject() {
     const { weekStart } = getWeekBoundary();
     const weekStartTs = weekStart.getTime();
@@ -1916,56 +1931,65 @@ function renderWeeklyProjectProgress() {
         el.style.display = 'none';
         return;
     }
+    el.style.display = 'block';
 
-    const hoursMap = getWeeklyHoursPerProject();
-    const BLOCKS = 10;
+    const { weekStart, weekEnd } = getWeekBoundaryWithOffset(_projProgressWeekOffset);
+    const weekStartTs = weekStart.getTime();
+    const weekEndTs = weekEnd.getTime();
+
+    const hoursMap = {};
+    sessionLogs.forEach(s => {
+        if (!s.completed || !s.startTime) return;
+        if (s.startTime < weekStartTs || s.startTime > weekEndTs) return;
+        const hrs = (s.endTime - s.startTime) / 3600000;
+        hoursMap[s.projectId] = (hoursMap[s.projectId] || 0) + hrs;
+    });
+
+    const fmt = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const weekLabel = `${fmt(weekStart)} – ${fmt(weekEnd)}, ${weekEnd.getFullYear()}`;
+    const isCurrentWeek = _projProgressWeekOffset >= 0;
+
+    let totalLogged = 0, totalTarget = 0;
 
     const rows = targetProjects.map(p => {
         const logged = hoursMap[p.id] || 0;
         const target = p.weeklyTargetHours;
-        const ratio = logged / target;
-        const pct = Math.round(ratio * 100);
-        const filled = Math.min(BLOCKS, Math.round(ratio * BLOCKS));
-        const empty = BLOCKS - filled;
-        const bar = '█'.repeat(filled) + '░'.repeat(empty);
-
-        let color, statusText;
-        if (pct >= 100) {
-            color = pct === 100 ? '#1967d2' : '#ea580c';
-            const over = (logged - target).toFixed(1);
-            statusText = `+${over}h over`;
-        } else {
-            color = '#16a34a';
-            statusText = '';
-        }
-
+        const pct = target > 0 ? Math.min(Math.round((logged / target) * 100), 999) : 0;
+        const barPct = target > 0 ? Math.min((logged / target) * 100, 100) : 0;
+        const color = pct >= 80 ? '#16a34a' : pct >= 40 ? '#d97706' : '#dc2626';
         const loggedStr = logged.toFixed(1);
-        const targetStr = target % 1 === 0 ? target.toFixed(0) : target.toFixed(1);
-
-        return `
-            <div style="margin-bottom:12px;">
-                <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:4px;">
-                    <span style="font-size:13px; font-weight:600;">${escapeHtml(p.name)}</span>
-                    <span style="font-size:12px; color:var(--text-secondary);">${loggedStr}h / ${targetStr}h${statusText ? ' · <span style="color:' + color + ';">' + statusText + '</span>' : ''}</span>
-                </div>
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <span style="font-family:monospace; font-size:16px; letter-spacing:1px; color:${color};">${bar}</span>
-                    <span style="font-size:12px; font-weight:700; color:${color};">${pct}%</span>
-                </div>
-            </div>`;
+        const targetStr = target % 1 === 0 ? String(target) : target.toFixed(1);
+        totalLogged += logged;
+        totalTarget += target;
+        return `<div style="margin-bottom:14px;">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;">
+                <span style="font-size:13px;font-weight:600;">${escapeHtml(p.name)}</span>
+                <span style="font-size:12px;color:var(--text-secondary);">${loggedStr}h / ${targetStr}h &nbsp;<b style="color:${color};">${pct}%</b></span>
+            </div>
+            <div style="background:var(--bg-tertiary);border-radius:6px;height:10px;overflow:hidden;border:1px solid var(--border-color);">
+                <div style="height:100%;width:${barPct.toFixed(1)}%;background:${color};border-radius:6px;transition:width 0.4s;min-width:${pct > 0 ? '4px' : '0'};"></div>
+            </div>
+        </div>`;
     }).join('');
 
-    const { weekStart, weekEnd } = getWeekBoundary();
-    const fmt = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    const weekLabel = `Week of ${fmt(weekStart)} – ${fmt(weekEnd)}, ${weekEnd.getFullYear()}`;
+    const totalPct = totalTarget > 0 ? Math.min(Math.round((totalLogged / totalTarget) * 100), 999) : 0;
+    const totalColor = totalPct >= 80 ? '#16a34a' : totalPct >= 40 ? '#d97706' : '#dc2626';
+    const totalTargetStr = totalTarget % 1 === 0 ? String(totalTarget) : totalTarget.toFixed(1);
 
-    el.style.display = 'block';
     el.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--border-color);">
-            <span style="font-weight:700; font-size:14px;">Weekly Project Progress</span>
-            <span style="font-size:12px; color:var(--text-secondary);">${weekLabel}</span>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:6px;">
+            <span style="font-weight:700;font-size:15px;">📊 Project Hours Progress</span>
+            <div style="display:flex;gap:6px;align-items:center;">
+                <button class="btn-secondary" style="padding:4px 12px;font-size:15px;line-height:1;" onclick="_projProgressWeekOffset--;renderWeeklyProjectProgress()">‹</button>
+                <span style="font-size:12px;color:var(--text-secondary);white-space:nowrap;">${weekLabel}</span>
+                <button class="btn-secondary" style="padding:4px 12px;font-size:15px;line-height:1;" onclick="if(_projProgressWeekOffset<0){_projProgressWeekOffset++;renderWeeklyProjectProgress();}" ${isCurrentWeek ? 'disabled style="opacity:0.4;cursor:default;"' : ''}>›</button>
+            </div>
         </div>
-        ${rows}`;
+        ${rows}
+        <div style="padding-top:10px;border-top:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px;">
+            <span style="font-size:13px;font-weight:600;color:var(--text-primary);">Total</span>
+            <span style="font-size:13px;color:var(--text-secondary);">${totalLogged.toFixed(1)}h / ${totalTargetStr}h this week &nbsp;<b style="color:${totalColor};">${totalPct}%</b></span>
+        </div>`;
 }
 
        function renderTodayView() {
@@ -2180,15 +2204,12 @@ function renderWeeklyProjectProgress() {
                     return state === 'done' || state === 'skipped' || state === 'failed';
                 }
                 if (item.type === 'session') {
-                    const p = item.project;
                     const s = item.session;
                     return sessionLogs.some(sl => {
                         if (!sl.completed || !sl.startTime) return false;
-                        if (sl.projectId !== p.id) return false;
                         if (getLocalDateStr(new Date(sl.startTime), true) !== dateStr) return false;
                         const sStartMins = new Date(sl.startTime).getHours() * 60 + new Date(sl.startTime).getMinutes();
-                        const [bh, bm] = s.startTime.split(':').map(Number);
-                        return Math.abs(sStartMins - (bh * 60 + bm)) <= 60;
+                        return sStartMins >= timeToMin(s.startTime) && sStartMins < timeToMin(s.endTime);
                     });
                 }
                 return false;
@@ -2521,16 +2542,18 @@ function renderWeeklyProjectProgress() {
                     if (h.period === 'weekly' || h.period === 'monthly') return false;
                     return (h.customDays || [0,1,2,3,4,5,6]).includes(jsDay);
                 }).sort((a, b) => (a.reminderTime || 'ZZ').localeCompare(b.reminderTime || 'ZZ'));
-                // Sessions for this day (with overrides applied)
+                // Sessions for this day (with overrides applied, split into 60-min blocks)
                 const daySessions = [];
                 projects.forEach(p => {
                     (p.scheduledSessions || []).forEach((s) => {
                         const ov = overrides.find(m => m.projectId === p.id && m.originalDay === s.day && m.startTime === s.startTime && m.endTime === s.endTime);
                         if (ov ? ov.targetDay !== abbr : s.day !== abbr) return;
-                        daySessions.push({ project: p, session: s, isMoved: !!ov, originalDay: s.day });
+                        expandTo60MinBlocks(s.startTime, s.endTime).forEach(block => {
+                            daySessions.push({ project: p, block, isMoved: !!ov, originalDay: s.day, sessStart: s.startTime, sessEnd: s.endTime });
+                        });
                     });
                 });
-                daySessions.sort((a, b) => (a.session.startTime || '').localeCompare(b.session.startTime || ''));
+                daySessions.sort((a, b) => (a.block.startTime || '').localeCompare(b.block.startTime || ''));
 
                 const habitsHtml = dayHabits.map(h => {
                     const log = habitLogs[h.id]?.[dateStr];
@@ -2544,12 +2567,12 @@ function renderWeeklyProjectProgress() {
                     </div>`;
                 }).join('');
 
-                const sessHtml = daySessions.map(({ project: p, session: s, isMoved, originalDay }) =>
+                const sessHtml = daySessions.map(({ project: p, block, isMoved, originalDay, sessStart, sessEnd }) =>
                     `<div class="wt-item wt-item--session">
                         <span>${p.icon || '📁'}</span>
                         <span class="wt-name">${escapeHtml(p.name)}${isMoved ? ' <span class="wt-moved">↗</span>' : ''}</span>
-                        <span class="wt-time">${s.startTime}–${s.endTime}</span>
-                        <button class="wt-move-btn" onclick="openMoveSessionPicker(${p.id},'${originalDay}','${s.startTime}','${s.endTime}')" title="Move">→</button>
+                        <span class="wt-time">${block.startTime}–${block.endTime}</span>
+                        <button class="wt-move-btn" onclick="openMoveSessionPicker(${p.id},'${originalDay}','${sessStart}','${sessEnd}')" title="Move">→</button>
                     </div>`
                 ).join('');
 
