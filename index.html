@@ -53,6 +53,7 @@
                     <h1 class="content-title">📅 Today</h1>
                     <div style="display:flex; align-items:center; gap:10px;">
                         <span id="todayDate" style="color: var(--text-secondary);"></span>
+                        <button class="btn-secondary" onclick="openPlanTodayModal()" style="background:var(--bg-tertiary);">&#x270F;&#xFE0F; Plan Today</button>
                         <button class="btn-secondary" onclick="setTodayViewMode('list')" id="todayListViewBtn">List View</button>
                         <button class="btn-secondary" onclick="setTodayViewMode('calendar')" id="todayCalendarViewBtn">Calendar View</button>
                     </div>
@@ -82,8 +83,8 @@
                 <!-- Weekly Project Progress -->
                 <div id="weeklyProjectProgress" style="display:none; margin-bottom:20px; padding:16px; background:var(--bg-secondary); border-radius:10px; border:1px solid var(--border-color);"></div>
 
-                <!-- Unified grid: Focus tile first, then habit tiles in habits-page order -->
-                <div class="today-habits-grid" id="todayMainGrid"></div>
+                <!-- Timeline: Focus tile, then scheduled habits/sessions, then unscheduled -->
+                <div class="today-timeline" id="todayTimeline"></div>
 
                 <span id="todayPlannedSessions" style="display:none;"></span>
                 <span id="todaySessionCount" style="display:none;"></span>
@@ -376,6 +377,10 @@
                             <input type="date" class="modal-input" id="modalHabitStartDate">
                         </div>
                     </div>
+                    <div style="margin-bottom: 16px;">
+                        <label class="modal-label">Estimated Duration (minutes)</label>
+                        <input type="number" class="modal-input" id="modalHabitDuration" placeholder="30" min="1" max="480" value="30">
+                    </div>
                 </div>
 
                 <div id="measurableFields" class="habit-modal-section" style="display: none;">
@@ -619,6 +624,32 @@
             <label class="modal-label">Tools</label>
             <div id="projectToolsList" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px;"></div>
 
+            <label class="modal-label">Weekly Scheduled Sessions</label>
+            <div id="scheduledSessionsList" style="margin-bottom:8px;"></div>
+            <div style="display:grid; grid-template-columns:auto 1fr 1fr auto; gap:8px; align-items:end; margin-bottom:16px;">
+                <div>
+                    <label class="modal-label" style="margin-bottom:4px;">Day</label>
+                    <select class="modal-select" id="newSessionDay" style="margin:0;">
+                        <option value="Mon">Mon</option>
+                        <option value="Tue">Tue</option>
+                        <option value="Wed">Wed</option>
+                        <option value="Thu">Thu</option>
+                        <option value="Fri">Fri</option>
+                        <option value="Sat">Sat</option>
+                        <option value="Sun">Sun</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="modal-label" style="margin-bottom:4px;">Start</label>
+                    <input type="time" class="modal-input" id="newSessionStart" style="margin:0;">
+                </div>
+                <div>
+                    <label class="modal-label" style="margin-bottom:4px;">End</label>
+                    <input type="time" class="modal-input" id="newSessionEnd" style="margin:0;">
+                </div>
+                <button type="button" class="btn-primary" onclick="addScheduledSession()" style="height:40px; align-self:end;">+ Add</button>
+            </div>
+
             <label class="modal-label">Description</label>
             <textarea class="modal-textarea" id="projectDescription" placeholder="Project description and goals..." style="min-height: 150px;"></textarea>
 
@@ -836,6 +867,9 @@
             </button>
             <button class="ham-btn ham-btn-notdone" onclick="todayMarkHabitFailed()">
                 <span>✕</span> Not Today
+            </button>
+            <button class="ham-btn ham-btn-skip" onclick="todaySkipHabit()">
+                <span>—</span> Skip
             </button>
             <button class="ham-btn ham-btn-cancel" onclick="closeTodayHabitModal()">Cancel</button>
         </div>
@@ -1568,6 +1602,40 @@
         <span class="mobile-nav-label">Island</span>
     </button>
 </nav>
+
+<!-- Plan Today Modal -->
+<div class="modal" id="planTodayModal">
+    <div class="modal-content" style="max-width:520px;">
+        <div class="modal-header">&#x270F;&#xFE0F; Plan Today</div>
+        <div id="planTodayDateLabel" style="font-size:13px; color:var(--text-secondary); margin-bottom:16px;"></div>
+
+        <div id="planTodayItemsList" style="margin-bottom:16px;"></div>
+
+        <div style="border-top:1px solid var(--border-color); padding-top:16px; margin-bottom:16px;">
+            <div style="font-weight:600; font-size:14px; margin-bottom:10px;">Add one-off session</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr auto; gap:8px; align-items:end;">
+                <div>
+                    <label class="modal-label" style="margin-bottom:4px;">Project</label>
+                    <select class="modal-select" id="planOneOffProject" style="margin:0;"></select>
+                </div>
+                <div>
+                    <label class="modal-label" style="margin-bottom:4px;">Start</label>
+                    <input type="time" class="modal-input" id="planOneOffStart" style="margin:0;">
+                </div>
+                <div>
+                    <label class="modal-label" style="margin-bottom:4px;">End</label>
+                    <input type="time" class="modal-input" id="planOneOffEnd" style="margin:0;">
+                </div>
+                <button type="button" class="btn-secondary" onclick="planTodayAddOneOff()" style="height:40px; align-self:end;">+ Add</button>
+            </div>
+        </div>
+
+        <div class="modal-footer">
+            <button class="btn-secondary" onclick="closePlanTodayModal()">Cancel</button>
+            <button class="btn-primary" onclick="savePlanToday()">Save Plan</button>
+        </div>
+    </div>
+</div>
 
 <script>
 if ('serviceWorker' in navigator) {

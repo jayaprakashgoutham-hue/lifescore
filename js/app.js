@@ -1705,7 +1705,7 @@ if (key === 'island') {
 
 function setHabitLogState(habitId, dateStr, state, value = null) {
     if (!habitLogs[habitId]) habitLogs[habitId] = {};
-    const normalized = state === 'done' ? 'done' : state === 'failed' ? 'failed' : 'blank';
+    const normalized = state === 'done' ? 'done' : state === 'failed' ? 'failed' : state === 'skipped' ? 'skipped' : 'blank';
     const habit = habits.find(h => String(h.id) === String(habitId));
     const isMeasurable = Boolean(habit?.measurable);
     const resolvedValue = value !== null ? value : normalized === 'done' ? 1 : 0;
@@ -1939,7 +1939,7 @@ function renderWeeklyProjectProgress() {
                 const isDoneToday = h => {
                     const log = habitLogs[h.id]?.[dateStr];
                     const state = getHabitLogState(log);
-                    if (state === 'done' || state === 'failed') return true;
+                    if (state === 'done' || state === 'failed' || state === 'skipped') return true;
                     if ((h.period === 'weekly' || h.period === 'monthly') && (log?.value || 0) > 0) return true;
                     return false;
                 };
@@ -1947,13 +1947,8 @@ function renderWeeklyProjectProgress() {
             });
 
             document.getElementById('todayHabitsCount').textContent = `${todayHabits.length} habit${todayHabits.length !== 1 ? 's' : ''}`;
-            const gridEl = document.getElementById('todayMainGrid');
 
-            // Unified grid: focus tile first, then habits in order
-            const focusTileHtml = renderFocusTile(creditHours, completedSessions.length);
-            gridEl.innerHTML = focusTileHtml + (todayHabits.length === 0
-                ? '<div class="today-tile-empty">No habits today!</div>'
-                : todayHabits.map(habit => renderTodayHabit(habit, dateStr)).join(''));
+            renderTodayTimeline(todayHabits, dateStr, displayDate, creditHours, completedSessions.length);
 
             const todayXP = getTodayXP(dateStr);
             const xpEl = document.getElementById('todayXpDisplay');
@@ -1983,10 +1978,10 @@ function renderWeeklyProjectProgress() {
             const diffLabel = (habit.difficulty || 'medium').toLowerCase();
             const diffDisplay = diffLabel[0].toUpperCase() + diffLabel.slice(1);
 
-            const stateClass = state === 'done' ? 'today-habit-tile--done' : state === 'failed' ? 'today-habit-tile--failed' : '';
+            const stateClass = state === 'done' ? 'today-habit-tile--done' : state === 'failed' ? 'today-habit-tile--failed' : state === 'skipped' ? 'today-habit-tile--skipped' : '';
             const diffClass  = `today-habit-tile--${diffLabel}`;
-            const dotClass   = state === 'done' ? 'state-done' : state === 'failed' ? 'state-failed' : '';
-            const dotIcon    = state === 'done' ? '✓' : state === 'failed' ? '✗' : '';
+            const dotClass   = state === 'done' ? 'state-done' : state === 'failed' ? 'state-failed' : state === 'skipped' ? 'state-skipped' : '';
+            const dotIcon    = state === 'done' ? '✓' : state === 'failed' ? '✗' : state === 'skipped' ? '—' : '';
 
             let progressHtml = '';
             if (habit.measurable) {
@@ -2029,6 +2024,283 @@ function renderWeeklyProjectProgress() {
                     </div>
                 </div>
             `;
+        }
+
+        // ========================================
+        // TODAY TIMELINE
+        // ========================================
+        const DAY_ABBRS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+        function renderTodayTimeline(todayHabits, dateStr, displayDate, creditHours, sessionCount) {
+            const el = document.getElementById('todayTimeline');
+            if (!el) return;
+
+            const todayAbbr = DAY_ABBRS[displayDate.getDay()];
+            const plan = getTodayPlan(dateStr);
+
+            // Build scheduled session blocks from projects
+            const scheduledBlocks = [];
+            projects.forEach(p => {
+                (p.scheduledSessions || []).forEach((s, idx) => {
+                    if (s.day === todayAbbr) {
+                        scheduledBlocks.push({ type: 'session', project: p, session: s, key: `s_${p.id}_${idx}` });
+                    }
+                });
+            });
+
+            // Add plan one-off sessions
+            if (plan) {
+                (plan.oneOffSessions || []).forEach((s, idx) => {
+                    const p = projects.find(x => x.id === s.projectId);
+                    if (p) scheduledBlocks.push({ type: 'session', project: p, session: { day: todayAbbr, startTime: s.startTime, endTime: s.endTime }, key: `oneoff_${idx}`, isOneOff: true });
+                });
+            }
+
+            // Build habit items
+            const habitItems = todayHabits.map(h => ({ type: 'habit', habit: h, key: `h_${h.id}`, time: h.reminderTime || null }));
+            const sessionItems = scheduledBlocks.map(b => ({ ...b, time: b.session.startTime }));
+
+            // All items with a time
+            let scheduledItems = [...habitItems.filter(i => i.time), ...sessionItems];
+            // Unscheduled habits
+            let unscheduledItems = habitItems.filter(i => !i.time);
+
+            // Apply plan order if present and matching today
+            if (plan && plan.date === dateStr && plan.order && plan.order.length > 0) {
+                const allItems = [...scheduledItems, ...unscheduledItems];
+                const ordered = [];
+                plan.order.forEach(k => {
+                    const found = allItems.find(i => i.key === k);
+                    if (found) ordered.push(found);
+                });
+                // Append anything not in the plan order
+                allItems.forEach(i => { if (!plan.order.includes(i.key)) ordered.push(i); });
+                scheduledItems = ordered.filter(i => i.time);
+                unscheduledItems = ordered.filter(i => !i.time);
+            } else {
+                // Sort by time
+                scheduledItems.sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+            }
+
+            let html = '';
+
+            // Focus bar at top
+            const sessionLabel = sessionCount === 1 ? '1 session' : `${sessionCount} sessions`;
+            html += `<div class="timeline-focus-bar" onclick="openStartSessionModal()">
+                <span class="timeline-focus-icon">&#x1F3AF;</span>
+                <span class="timeline-focus-label">Focus Sessions</span>
+                <span class="timeline-focus-meta">${creditHours}h today &middot; ${sessionLabel}</span>
+                <span class="timeline-focus-arrow">&#x276F;</span>
+            </div>`;
+
+            // Scheduled items
+            if (scheduledItems.length > 0) {
+                scheduledItems.forEach(item => {
+                    html += renderTimelineItem(item, dateStr);
+                });
+            }
+
+            // Unscheduled section
+            if (unscheduledItems.length > 0) {
+                html += `<div class="timeline-section-label">No Time Set</div>`;
+                unscheduledItems.forEach(item => {
+                    html += renderTimelineItem(item, dateStr);
+                });
+            }
+
+            if (scheduledItems.length === 0 && unscheduledItems.length === 0) {
+                html += '<div class="today-tile-empty" style="margin-top:16px;">No habits today!</div>';
+            }
+
+            el.innerHTML = html;
+        }
+
+        function renderTimelineItem(item, dateStr) {
+            if (item.type === 'habit') {
+                const habit = item.habit;
+                const log = habitLogs[habit.id]?.[dateStr];
+                const state = getHabitLogState(log);
+                const stateClass = state === 'done' ? 'timeline-item--done' : state === 'failed' ? 'timeline-item--failed' : state === 'skipped' ? 'timeline-item--skipped' : '';
+                const stateIcon = state === 'done' ? '✓' : state === 'failed' ? '✗' : state === 'skipped' ? '—' : '';
+                const stateIconClass = state === 'done' ? 'state-done' : state === 'failed' ? 'state-failed' : state === 'skipped' ? 'state-skipped' : '';
+                const diffLabel = (habit.difficulty || 'medium').toLowerCase();
+                const diffDisplay = diffLabel[0].toUpperCase() + diffLabel.slice(1);
+                const xp = getHabitXP(habit);
+                const streak = getHabitStreak(habit.id);
+                const streakHtml = streak >= 1 ? `<span class="habit-streak-badge">&#x1F525; ${streak}</span>` : '';
+                const durationHtml = habit.duration ? `<span class="timeline-duration">${habit.duration}m</span>` : '';
+                return `<div class="timeline-item timeline-item--habit ${stateClass}" onclick="openTodayHabitAction(${habit.id}, '${dateStr}')">
+                    <div class="timeline-time">${item.time || ''}</div>
+                    <div class="timeline-icon">${habit.icon || '🎯'}</div>
+                    <div class="timeline-body">
+                        <div class="timeline-name">${escapeHtml(habit.name)}</div>
+                        <div class="timeline-meta">${diffDisplay} · ${xp} XP ${streakHtml} ${durationHtml}</div>
+                    </div>
+                    <div class="timeline-status ${stateIconClass}">${stateIcon}</div>
+                </div>`;
+            } else {
+                // session block
+                const p = item.project;
+                const s = item.session;
+                const timeRange = `${s.startTime}–${s.endTime}`;
+                return `<div class="timeline-item timeline-item--session" onclick="openStartSessionModalWithProject(${p.id})">
+                    <div class="timeline-time">${s.startTime}</div>
+                    <div class="timeline-icon" style="color:${p.color || 'var(--accent-color)'};">${p.icon || '📁'}</div>
+                    <div class="timeline-body">
+                        <div class="timeline-name">${escapeHtml(p.name)}</div>
+                        <div class="timeline-meta">${timeRange}${item.isOneOff ? ' · one-off' : ''}</div>
+                    </div>
+                    <div class="timeline-status" style="font-size:12px; color:var(--text-secondary);">&#x276F;</div>
+                </div>`;
+            }
+        }
+
+        function openStartSessionModalWithProject(projectId) {
+            openStartSessionModal();
+            setTimeout(() => {
+                const sel = document.getElementById('sessionProjectSelect');
+                if (sel) sel.value = projectId;
+            }, 50);
+        }
+
+        // ========================================
+        // PLAN TODAY
+        // ========================================
+        const PLAN_TODAY_KEY = 'lifescore_todayplan_v4';
+        let _planTodayItems = [];
+        let _planTodayOneOffs = [];
+        let _planTodayDateStr = '';
+
+        function getTodayPlan(dateStr) {
+            try {
+                const raw = localStorage.getItem(PLAN_TODAY_KEY);
+                if (!raw) return null;
+                const plan = JSON.parse(raw);
+                return plan.date === dateStr ? plan : null;
+            } catch { return null; }
+        }
+
+        function openPlanTodayModal() {
+            const today = new Date();
+            _planTodayDateStr = getLocalDateStr(today, true);
+            const displayDate = new Date(_planTodayDateStr + 'T12:00:00');
+            const todayAbbr = DAY_ABBRS[displayDate.getDay()];
+
+            document.getElementById('planTodayDateLabel').textContent = displayDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
+            // Build items list
+            const todayHabits = habits.filter(h => {
+                const habitDays = h.customDays || [0,1,2,3,4,5,6];
+                return habitDays.includes(displayDate.getDay());
+            });
+
+            const sessionBlocks = [];
+            projects.forEach(p => {
+                (p.scheduledSessions || []).forEach((s, idx) => {
+                    if (s.day === todayAbbr) {
+                        sessionBlocks.push({ type: 'session', key: `s_${p.id}_${idx}`, label: `${p.icon || '📁'} ${p.name}`, meta: `${s.startTime}–${s.endTime}`, time: s.startTime, project: p, session: s });
+                    }
+                });
+            });
+
+            const habitItemsList = todayHabits.map(h => ({ type: 'habit', key: `h_${h.id}`, label: `${h.icon || '🎯'} ${h.name}`, meta: h.reminderTime || 'No time', time: h.reminderTime || null }));
+            _planTodayItems = [...habitItemsList, ...sessionBlocks];
+
+            // Load existing plan order + one-offs
+            const existing = getTodayPlan(_planTodayDateStr);
+            if (existing && existing.order) {
+                const ordered = [];
+                existing.order.forEach(k => {
+                    const found = _planTodayItems.find(i => i.key === k);
+                    if (found) ordered.push(found);
+                });
+                _planTodayItems.forEach(i => { if (!existing.order.includes(i.key)) ordered.push(i); });
+                _planTodayItems = ordered;
+            }
+            _planTodayOneOffs = existing ? JSON.parse(JSON.stringify(existing.oneOffSessions || [])) : [];
+
+            // Populate one-off project dropdown
+            const sel = document.getElementById('planOneOffProject');
+            sel.innerHTML = '<option value="">Select project...</option>' +
+                projects.map(p => `<option value="${p.id}">${p.icon || '📁'} ${escapeHtml(p.name)}</option>`).join('');
+
+            renderPlanTodayItems();
+            document.getElementById('planTodayModal').classList.add('active');
+        }
+
+        function closePlanTodayModal() {
+            document.getElementById('planTodayModal').classList.remove('active');
+        }
+
+        function renderPlanTodayItems() {
+            const el = document.getElementById('planTodayItemsList');
+            if (!el) return;
+            let html = '';
+            _planTodayItems.forEach((item, i) => {
+                html += `<div class="plan-today-item">
+                    <div class="plan-today-item-label">
+                        <span>${item.label}</span>
+                        <span class="plan-today-item-meta">${item.meta}</span>
+                    </div>
+                    <div class="plan-today-item-controls">
+                        <button onclick="planTodayMoveUp(${i})" ${i === 0 ? 'disabled' : ''} style="background:none; border:1px solid var(--border-color); border-radius:4px; cursor:pointer; padding:2px 8px; color:var(--text-primary);">↑</button>
+                        <button onclick="planTodayMoveDown(${i})" ${i === _planTodayItems.length - 1 ? 'disabled' : ''} style="background:none; border:1px solid var(--border-color); border-radius:4px; cursor:pointer; padding:2px 8px; color:var(--text-primary);">↓</button>
+                    </div>
+                </div>`;
+            });
+            if (_planTodayOneOffs.length > 0) {
+                html += `<div class="timeline-section-label" style="margin-top:12px;">One-off Sessions</div>`;
+                _planTodayOneOffs.forEach((s, i) => {
+                    const p = projects.find(x => x.id === s.projectId);
+                    html += `<div class="plan-today-item">
+                        <div class="plan-today-item-label">
+                            <span>${p ? (p.icon || '📁') + ' ' + escapeHtml(p.name) : 'Unknown'}</span>
+                            <span class="plan-today-item-meta">${s.startTime}–${s.endTime}</span>
+                        </div>
+                        <button onclick="planTodayRemoveOneOff(${i})" style="background:none; border:none; color:var(--error-color); cursor:pointer; font-size:18px;">×</button>
+                    </div>`;
+                });
+            }
+            el.innerHTML = html || '<div style="color:var(--text-secondary); font-size:13px;">No habits or sessions for today.</div>';
+        }
+
+        function planTodayMoveUp(i) {
+            if (i <= 0) return;
+            [_planTodayItems[i - 1], _planTodayItems[i]] = [_planTodayItems[i], _planTodayItems[i - 1]];
+            renderPlanTodayItems();
+        }
+
+        function planTodayMoveDown(i) {
+            if (i >= _planTodayItems.length - 1) return;
+            [_planTodayItems[i], _planTodayItems[i + 1]] = [_planTodayItems[i + 1], _planTodayItems[i]];
+            renderPlanTodayItems();
+        }
+
+        function planTodayAddOneOff() {
+            const projectId = parseInt(document.getElementById('planOneOffProject').value);
+            const startTime = document.getElementById('planOneOffStart').value;
+            const endTime = document.getElementById('planOneOffEnd').value;
+            if (!projectId) return alert('Please select a project');
+            if (!startTime || !endTime) return alert('Please set start and end times');
+            if (startTime >= endTime) return alert('End time must be after start time');
+            _planTodayOneOffs.push({ projectId, startTime, endTime });
+            renderPlanTodayItems();
+        }
+
+        function planTodayRemoveOneOff(i) {
+            _planTodayOneOffs.splice(i, 1);
+            renderPlanTodayItems();
+        }
+
+        function savePlanToday() {
+            const plan = {
+                date: _planTodayDateStr,
+                order: _planTodayItems.map(i => i.key),
+                oneOffSessions: _planTodayOneOffs
+            };
+            localStorage.setItem(PLAN_TODAY_KEY, JSON.stringify(plan));
+            closePlanTodayModal();
+            renderTodayView();
         }
 
 
@@ -2483,6 +2755,15 @@ function renderWeeklyProjectProgress() {
             showHabitNotTodayModal();
         }
 
+        function todaySkipHabit() {
+            if (!_todayHabitId) return;
+            setHabitLogState(_todayHabitId, _todayHabitDate, 'skipped', 0);
+            saveHabitLogs();
+            closeTodayHabitModal();
+            renderTodayView();
+            renderHabitLog();
+        }
+
         function todaySubmitMeasurable() {
             if (!_todayHabitId) return;
             const val = parseFloat(document.getElementById('todayHabitValueInput').value);
@@ -2556,6 +2837,13 @@ function renderWeeklyProjectProgress() {
             renderTodayView();
             renderHabitLog();
             renderHabitWeekChart();
+        }
+
+        function skipHabitForDate(habitId, dateStr) {
+            setHabitLogState(habitId, dateStr, 'skipped', 0);
+            saveHabitLogs();
+            renderTodayView();
+            renderHabitLog();
         }
 
         function calculateHabitDailyPoints(habit, value) {
@@ -2668,6 +2956,8 @@ function filterHabitsByProject() {
             document.getElementById('projectDescription').value = '';
             document.getElementById('deleteProjectBtn').style.display = 'none';
             renderProjectToolsCheckboxes([]);
+            _editingScheduledSessions = [];
+            renderScheduledSessions();
             document.getElementById('projectModal').classList.add('active');
         }
 
@@ -2699,6 +2989,8 @@ function filterHabitsByProject() {
             
             document.getElementById('deleteProjectBtn').style.display = 'block';
             renderProjectToolsCheckboxes(project.tools || []);
+            _editingScheduledSessions = JSON.parse(JSON.stringify(project.scheduledSessions || []));
+            renderScheduledSessions();
             document.getElementById('projectModal').classList.add('active');
         }
 
@@ -2881,6 +3173,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 project.description = description;
                 project.tools = selectedTools;
                 project.archived = (status === 'archived');
+                project.scheduledSessions = _editingScheduledSessions;
             } else {
                 const newProjectId = Date.now();
                 savedProjectId = newProjectId;
@@ -2895,7 +3188,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     description: description,
                     tools: selectedTools,
                     archived: false,
-                    
+                    scheduledSessions: _editingScheduledSessions,
                 });
                 
                 // Auto-create Plan and Guidelines notes
@@ -2949,6 +3242,42 @@ document.addEventListener('DOMContentLoaded', function() {
         function closeProjectModal() {
             document.getElementById('projectModal').classList.remove('active');
             editingId = null;
+        }
+
+        // ========================================
+        // SCHEDULED SESSIONS
+        // ========================================
+        let _editingScheduledSessions = [];
+
+        function renderScheduledSessions() {
+            const el = document.getElementById('scheduledSessionsList');
+            if (!el) return;
+            if (_editingScheduledSessions.length === 0) {
+                el.innerHTML = '<div style="color:var(--text-secondary); font-size:13px; padding:4px 0 8px;">No sessions scheduled.</div>';
+                return;
+            }
+            el.innerHTML = _editingScheduledSessions.map((s, i) =>
+                `<div style="display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid var(--border-color);">
+                    <span style="font-weight:600; min-width:36px;">${s.day}</span>
+                    <span>${s.startTime} – ${s.endTime}</span>
+                    <button type="button" onclick="removeScheduledSession(${i})" style="margin-left:auto; background:none; border:none; color:var(--error-color); cursor:pointer; font-size:18px; line-height:1;">×</button>
+                </div>`
+            ).join('');
+        }
+
+        function addScheduledSession() {
+            const day = document.getElementById('newSessionDay').value;
+            const startTime = document.getElementById('newSessionStart').value;
+            const endTime = document.getElementById('newSessionEnd').value;
+            if (!startTime || !endTime) return alert('Please set start and end times');
+            if (startTime >= endTime) return alert('End time must be after start time');
+            _editingScheduledSessions.push({ day, startTime, endTime });
+            renderScheduledSessions();
+        }
+
+        function removeScheduledSession(index) {
+            _editingScheduledSessions.splice(index, 1);
+            renderScheduledSessions();
         }
 
         // ========================================
@@ -3109,6 +3438,7 @@ function showAddModal() { toggleFabMenu({ stopPropagation: () => {} }); }
             document.getElementById('modalPeriod').value = habit.period || 'daily';
             document.getElementById('modalHabitReminderTime').value = habit.reminderTime || '';
             document.getElementById('modalHabitStartDate').value = habit.startTrackingDate || getLocalDateStr();
+            document.getElementById('modalHabitDuration').value = habit.duration || 30;
             document.getElementById('modalHabitDetails').value = habit.details || '';
             
             document.getElementById('habitDetailsContainer').style.display = 'block';
@@ -3287,6 +3617,7 @@ unit: measurable ? document.getElementById('modalUnit').value.trim() || 'count' 
 period: measurable ? document.getElementById('modalPeriod').value : 'daily',
                     reminderTime: document.getElementById('modalHabitReminderTime').value || null,
                     startTrackingDate: document.getElementById('modalHabitStartDate').value || getLocalDateStr(),
+                    duration: parseInt(document.getElementById('modalHabitDuration').value) || 30,
                     streakCurrent: 0,
                     streakLongest: 0
                 };
@@ -3846,6 +4177,7 @@ function unskipTask(taskId) {
                     <span class="habit-name-text" title="${escapeHtml(habit.name)}" onclick="event.stopPropagation(); openHabitAnalyticsModal(${habit.id}, event)" style="cursor: pointer;">${escapeHtml(habit.name)}</span>
                     ${timeLabel ? `<span class="time-chip">${timeLabel}</span>` : ''}<span class="weight-badge">${(habit.difficulty || 'medium')[0].toUpperCase() + (habit.difficulty || 'medium').slice(1)} · ${getHabitXP(habit)} XP</span>
                     <button class="more-btn" onclick="event.preventDefault(); event.stopPropagation(); markHabitNotDone(${habit.id}, '${getLocalDateStr(today)}')" title="Mark today not done">✗</button>
+                    <button class="more-btn" style="color:var(--text-secondary);" onclick="event.preventDefault(); event.stopPropagation(); skipHabitForDate(${habit.id}, '${getLocalDateStr(today)}')" title="Skip today">—</button>
                     <button class="more-btn" onclick="event.preventDefault(); event.stopPropagation(); editHabit(${habit.id})" style="margin-left: auto;">⋮</button>
                 </div>`;
                 // Removed: Time, Project, Type, Completion columns
@@ -3952,6 +4284,9 @@ function unskipTask(taskId) {
         } else if (state === 'failed') {
             cellClass = 'failed';
             cellText = '✗';
+        } else if (state === 'skipped') {
+            cellClass = 'skipped';
+            cellText = '—';
         } else if (dateStr < todayCutoff && dateStr >= trackStart) {
             cellClass = 'failed';
             cellText = '✗';
