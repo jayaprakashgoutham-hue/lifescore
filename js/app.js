@@ -2165,18 +2165,32 @@ function renderWeeklyProjectProgress() {
                 scheduledItems.sort((a, b) => (a.time || '').localeCompare(b.time || ''));
             }
 
-            // Separate active vs completed/skipped/failed habit items
-            function isHabitActedOn(item) {
-                if (item.type !== 'habit') return false;
-                const log = habitLogs[item.habit.id]?.[dateStr];
-                const state = getHabitLogState(log);
-                return state === 'done' || state === 'skipped' || state === 'failed';
+            // Separate active vs completed/skipped/failed items (habits AND sessions)
+            function isItemActedOn(item) {
+                if (item.type === 'habit') {
+                    const log = habitLogs[item.habit.id]?.[dateStr];
+                    const state = getHabitLogState(log);
+                    return state === 'done' || state === 'skipped' || state === 'failed';
+                }
+                if (item.type === 'session') {
+                    const p = item.project;
+                    const s = item.session;
+                    return sessionLogs.some(sl => {
+                        if (!sl.completed || !sl.startTime) return false;
+                        if (sl.projectId !== p.id) return false;
+                        if (getLocalDateStr(new Date(sl.startTime), true) !== dateStr) return false;
+                        const sStartMins = new Date(sl.startTime).getHours() * 60 + new Date(sl.startTime).getMinutes();
+                        const [bh, bm] = s.startTime.split(':').map(Number);
+                        return Math.abs(sStartMins - (bh * 60 + bm)) <= 60;
+                    });
+                }
+                return false;
             }
 
-            const activeScheduled = scheduledItems.filter(i => !isHabitActedOn(i));
-            const completedFromScheduled = scheduledItems.filter(i => isHabitActedOn(i));
-            const activeUnscheduled = unscheduledItems.filter(i => !isHabitActedOn(i));
-            const completedFromUnscheduled = unscheduledItems.filter(i => isHabitActedOn(i));
+            const activeScheduled = scheduledItems.filter(i => !isItemActedOn(i));
+            const completedFromScheduled = scheduledItems.filter(i => isItemActedOn(i));
+            const activeUnscheduled = unscheduledItems.filter(i => !isItemActedOn(i));
+            const completedFromUnscheduled = unscheduledItems.filter(i => isItemActedOn(i));
             const completedItems = [...completedFromScheduled, ...completedFromUnscheduled];
 
             // Compute break blocks for gaps within wake-sleep window
@@ -7036,23 +7050,25 @@ function saveWeightAdjustments() {}
                     <span style="cursor:grab; color:var(--text-secondary); font-size:18px; padding:0 2px; flex-shrink:0; user-select:none;" title="Drag to reorder">⠿</span>
                     <span style="flex:1; font-size:15px; font-weight:500; min-width:80px;" id="proj-name-${p.id}">${escapeHtml(p.name)}</span>
                     <input type="text" class="modal-input" id="proj-edit-${p.id}" value="${escapeHtml(p.name)}" style="display:none; flex:1; padding:6px 10px; font-size:14px; margin-bottom:0;" onkeydown="if(event.key==='Enter')saveProjectEdit(${p.id}); else if(event.key==='Escape')cancelProjectEdit(${p.id})">
-                    <div id="proj-edit-btns-${p.id}" style="display:none; gap:4px; flex-shrink:0;">
-                        <button onclick="saveProjectEdit(${p.id})" style="padding:4px 12px; background:var(--accent-color); color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:13px; font-weight:600;">✓</button>
-                        <button onclick="cancelProjectEdit(${p.id})" style="padding:4px 10px; background:none; border:1px solid var(--border-color); border-radius:6px; cursor:pointer; font-size:13px; color:var(--text-secondary);">✕</button>
+                    <div id="proj-edit-btns-${p.id}" style="display:none; gap:6px; flex-shrink:0;">
+                        <button onclick="saveProjectEdit(${p.id})" style="padding:6px 16px; background:var(--accent-color); color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:14px; font-weight:600;">Save</button>
+                        <button onclick="cancelProjectEdit(${p.id})" style="padding:6px 12px; background:none; border:1px solid var(--border-color); border-radius:6px; cursor:pointer; font-size:14px; color:var(--text-secondary);">✕</button>
                     </div>
-                    <div style="display:flex; align-items:center; gap:5px; flex-shrink:0;">
-                        <input type="number" min="0" max="168" step="0.5" id="proj-target-${p.id}" value="${p.weeklyTargetHours || ''}" placeholder="—" style="width:58px; padding:5px 8px; font-size:13px; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-tertiary); color:var(--text-primary); text-align:center;" title="Weekly target hours"
-                            oninput="renderProjectRegistryTotal()"
-                            onblur="updateProjectTarget(${p.id}, this.value)"
-                            onkeydown="if(event.key==='Enter'){updateProjectTarget(${p.id},this.value);this.blur();event.preventDefault();}">
-                        <span style="font-size:12px; color:var(--text-secondary); white-space:nowrap;">hrs/wk</span>
-                    </div>
-                    <button onclick="toggleSchedulePanel(${p.id})" style="background:none; border:1px solid var(--border-color); border-radius:6px; cursor:pointer; font-size:16px; color:var(--text-secondary); padding:2px 8px; line-height:1.4;" title="Scheduled sessions">🕐</button>
-                    <div style="position:relative; flex-shrink:0;">
-                        <button onclick="toggleProjectMenu(${p.id})" style="background:none; border:1px solid transparent; border-radius:6px; cursor:pointer; font-size:20px; color:var(--text-secondary); padding:2px 8px; line-height:1.2;" title="Options">⋮</button>
-                        <div id="proj-menu-${p.id}" style="display:none; position:absolute; right:0; top:100%; margin-top:4px; background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:8px; box-shadow:0 4px 16px var(--shadow); z-index:300; min-width:130px; overflow:hidden;">
-                            <button onclick="startEditProject(${p.id})" style="display:block; width:100%; text-align:left; padding:10px 14px; font-size:14px; background:none; border:none; border-bottom:1px solid var(--border-color); cursor:pointer; color:var(--text-primary);">✏️ Edit Name</button>
-                            <button onclick="deleteProjectFromRegistry(${p.id})" style="display:block; width:100%; text-align:left; padding:10px 14px; font-size:14px; background:none; border:none; cursor:pointer; color:#dc2626;">🗑 Delete</button>
+                    <div id="proj-controls-${p.id}" style="display:flex; align-items:center; gap:5px; flex-shrink:0;">
+                        <div style="display:flex; align-items:center; gap:4px;">
+                            <input type="number" min="0" max="168" step="0.5" id="proj-target-${p.id}" value="${p.weeklyTargetHours || ''}" placeholder="—" style="width:58px; padding:5px 8px; font-size:13px; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-tertiary); color:var(--text-primary); text-align:center;" title="Weekly target hours"
+                                oninput="renderProjectRegistryTotal()"
+                                onblur="updateProjectTarget(${p.id}, this.value)"
+                                onkeydown="if(event.key==='Enter'){updateProjectTarget(${p.id},this.value);this.blur();event.preventDefault();}">
+                            <span style="font-size:12px; color:var(--text-secondary); white-space:nowrap;">hrs/wk</span>
+                        </div>
+                        <button onclick="toggleSchedulePanel(${p.id})" style="background:none; border:1px solid var(--border-color); border-radius:6px; cursor:pointer; font-size:16px; color:var(--text-secondary); padding:2px 8px; line-height:1.4;" title="Scheduled sessions">🕐</button>
+                        <div style="position:relative; flex-shrink:0;">
+                            <button onclick="toggleProjectMenu(${p.id})" style="background:none; border:1px solid transparent; border-radius:6px; cursor:pointer; font-size:20px; color:var(--text-secondary); padding:2px 8px; line-height:1.2;" title="Options">⋮</button>
+                            <div id="proj-menu-${p.id}" style="display:none; position:absolute; right:0; top:100%; margin-top:4px; background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:8px; box-shadow:0 4px 16px var(--shadow); z-index:300; min-width:130px; overflow:hidden;">
+                                <button onclick="startEditProject(${p.id})" style="display:block; width:100%; text-align:left; padding:10px 14px; font-size:14px; background:none; border:none; border-bottom:1px solid var(--border-color); cursor:pointer; color:var(--text-primary);">✏️ Edit Name</button>
+                                <button onclick="deleteProjectFromRegistry(${p.id})" style="display:block; width:100%; text-align:left; padding:10px 14px; font-size:14px; background:none; border:none; cursor:pointer; color:#dc2626;">🗑 Delete</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -7209,8 +7225,10 @@ function saveWeightAdjustments() {}
             const nameEl = document.getElementById(`proj-name-${id}`);
             const editInput = document.getElementById(`proj-edit-${id}`);
             const editBtns = document.getElementById(`proj-edit-btns-${id}`);
+            const controls = document.getElementById(`proj-controls-${id}`);
             if (!nameEl || !editInput) return;
             nameEl.style.display = 'none';
+            if (controls) controls.style.display = 'none';
             editInput.style.display = 'block';
             if (editBtns) editBtns.style.display = 'flex';
             editInput.focus();
@@ -7221,15 +7239,18 @@ function saveWeightAdjustments() {}
             const nameEl = document.getElementById(`proj-name-${id}`);
             const editInput = document.getElementById(`proj-edit-${id}`);
             const editBtns = document.getElementById(`proj-edit-btns-${id}`);
+            const controls = document.getElementById(`proj-controls-${id}`);
             if (!nameEl || !editInput) return;
             if (p) editInput.value = p.name;
             nameEl.style.display = '';
             editInput.style.display = 'none';
             if (editBtns) editBtns.style.display = 'none';
+            if (controls) controls.style.display = 'flex';
         }
         function saveProjectEdit(id) {
             const editInput = document.getElementById(`proj-edit-${id}`);
             const editBtns = document.getElementById(`proj-edit-btns-${id}`);
+            const controls = document.getElementById(`proj-controls-${id}`);
             const name = editInput ? editInput.value.trim() : '';
             if (!name) return;
             const p = projects.find(p => p.id === id);
@@ -7244,6 +7265,7 @@ function saveWeightAdjustments() {}
             if (nameEl) { nameEl.textContent = name; nameEl.style.display = ''; }
             if (editInput) editInput.style.display = 'none';
             if (editBtns) editBtns.style.display = 'none';
+            if (controls) controls.style.display = 'flex';
         }
         function deleteProjectFromRegistry(id) {
             closeAllProjectMenus();
