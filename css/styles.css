@@ -3152,6 +3152,19 @@
 }
 
 @media (max-width: 768px) {
+    /* FAB sits above the 64px bottom nav */
+    .add-btn-float {
+        bottom: 80px;
+        right: 20px;
+        width: 54px;
+        height: 54px;
+        font-size: 26px;
+    }
+    #fabAddMenu {
+        bottom: 146px;
+        right: 20px;
+    }
+
     body { font-size: 15px; }
 
     /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -3543,6 +3556,12 @@
     letter-spacing: 0.8px;
     color: var(--text-secondary);
     padding: 10px 4px 4px;
+}
+
+.timeline-section-completed {
+    margin-top: 8px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
 }
 
 /* Plan Today modal items */

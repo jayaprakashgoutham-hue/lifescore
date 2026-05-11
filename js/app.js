@@ -215,6 +215,7 @@ let selectedProjectColor = '#1967d2';
                     id: p.id,
                     name: p.name,
                     ...(p.weeklyTargetHours > 0 ? { weeklyTargetHours: p.weeklyTargetHours } : {}),
+                    ...(p.scheduledSessions && p.scheduledSessions.length ? { scheduledSessions: p.scheduledSessions } : {}),
                     ...(p.updatedAt ? { updatedAt: p.updatedAt } : {})
                 }));
             } else {
@@ -2087,24 +2088,38 @@ function renderWeeklyProjectProgress() {
                 scheduledItems.sort((a, b) => (a.time || '').localeCompare(b.time || ''));
             }
 
+            // Separate active vs completed/skipped/failed habit items
+            function isHabitActedOn(item) {
+                if (item.type !== 'habit') return false;
+                const log = habitLogs[item.habit.id]?.[dateStr];
+                const state = getHabitLogState(log);
+                return state === 'done' || state === 'skipped' || state === 'failed';
+            }
+
+            const activeScheduled = scheduledItems.filter(i => !isHabitActedOn(i));
+            const completedFromScheduled = scheduledItems.filter(i => isHabitActedOn(i));
+            const activeUnscheduled = unscheduledItems.filter(i => !isHabitActedOn(i));
+            const completedFromUnscheduled = unscheduledItems.filter(i => isHabitActedOn(i));
+            const completedItems = [...completedFromScheduled, ...completedFromUnscheduled];
+
             let html = '';
 
-            // Scheduled items
-            if (scheduledItems.length > 0) {
-                scheduledItems.forEach(item => {
-                    html += renderTimelineItem(item, dateStr);
-                });
-            }
+            // Active scheduled items
+            activeScheduled.forEach(item => { html += renderTimelineItem(item, dateStr); });
 
-            // Unscheduled section
-            if (unscheduledItems.length > 0) {
+            // Active unscheduled section
+            if (activeUnscheduled.length > 0) {
                 html += `<div class="timeline-section-label">No Time Set</div>`;
-                unscheduledItems.forEach(item => {
-                    html += renderTimelineItem(item, dateStr);
-                });
+                activeUnscheduled.forEach(item => { html += renderTimelineItem(item, dateStr); });
             }
 
-            if (scheduledItems.length === 0 && unscheduledItems.length === 0) {
+            // Completed section
+            if (completedItems.length > 0) {
+                html += `<div class="timeline-section-label timeline-section-completed">Completed</div>`;
+                completedItems.forEach(item => { html += renderTimelineItem(item, dateStr); });
+            }
+
+            if (activeScheduled.length === 0 && activeUnscheduled.length === 0 && completedItems.length === 0) {
                 html += '<div class="today-tile-empty" style="margin-top:16px;">No habits today!</div>';
             }
 
@@ -2279,6 +2294,61 @@ function renderWeeklyProjectProgress() {
                     const content = row.querySelector('.swipe-content');
                     _resetSwipe(content, null);
                     markHabitNotDone(parseInt(row.dataset.habitId), row.dataset.date);
+                });
+            });
+        }
+
+        function initHabitTouchReorder(grid) {
+            let srcId = null, tgtId = null;
+
+            grid.querySelectorAll('.habit-drag-handle').forEach(handle => {
+                handle.addEventListener('touchstart', e => {
+                    e.stopPropagation(); // block swipe handler on parent row
+                    const row = handle.closest('.habit-log-name');
+                    if (!row) return;
+                    srcId = parseInt(row.dataset.habitId);
+                    tgtId = null;
+                    row.querySelector('.swipe-content').style.opacity = '0.35';
+                }, { passive: true });
+
+                handle.addEventListener('touchmove', e => {
+                    if (srcId == null) return;
+                    e.preventDefault();    // prevent page scroll
+                    e.stopPropagation();   // block swipe handler
+                    const touch = e.touches[0];
+                    // Temporarily hide handle to hit-test the row beneath
+                    handle.style.pointerEvents = 'none';
+                    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+                    handle.style.pointerEvents = '';
+                    if (!el) return;
+                    const targetRow = el.closest('.habit-log-name');
+                    if (!targetRow || !targetRow.dataset.habitId) return;
+                    const newTgt = parseInt(targetRow.dataset.habitId);
+                    if (isNaN(newTgt) || newTgt === srcId) return;
+                    if (newTgt !== tgtId) {
+                        grid.querySelectorAll('.habit-log-name').forEach(r => r.style.outline = '');
+                        targetRow.style.outline = '2px solid var(--accent-color)';
+                        tgtId = newTgt;
+                    }
+                }, { passive: false });
+
+                handle.addEventListener('touchend', e => {
+                    if (srcId == null) return;
+                    e.stopPropagation();
+                    const srcRow = grid.querySelector(`.habit-log-name[data-habit-id="${srcId}"]`);
+                    if (srcRow) srcRow.querySelector('.swipe-content').style.opacity = '';
+                    grid.querySelectorAll('.habit-log-name').forEach(r => r.style.outline = '');
+                    if (tgtId != null) {
+                        const di = habits.findIndex(h => h.id === srcId);
+                        const ti = habits.findIndex(h => h.id === tgtId);
+                        if (di !== -1 && ti !== -1) {
+                            const [moved] = habits.splice(di, 1);
+                            habits.splice(ti, 0, moved);
+                            saveHabits();
+                            renderHabitLog();
+                        }
+                    }
+                    srcId = null; tgtId = null;
                 });
             });
         }
@@ -4482,6 +4552,7 @@ function unskipTask(taskId) {
             updateHabitScores();
             renderMobileHabitCards(last7Days, filteredHabits, todayStr);
             initHabitSwipes(grid);
+            initHabitTouchReorder(grid);
         }
 
         function showHabitValueModal(habitId, dateStr) {
@@ -6604,13 +6675,10 @@ function saveWeightAdjustments() {}
                 </div>
                 <div id="proj-schedule-panel-${p.id}" style="display:none; padding:12px 8px 14px; background:var(--bg-tertiary); border-bottom:1px solid var(--border-color); border-left:3px solid var(--accent-color);">
                     <div id="proj-sessions-chips-${p.id}" style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px;"></div>
-                    <div style="display:grid; grid-template-columns:auto 1fr 1fr auto; gap:6px; align-items:end;">
-                        <div>
-                            <div style="font-size:11px; color:var(--text-secondary); margin-bottom:2px;">Day</div>
-                            <select id="reg-sess-day-${p.id}" style="padding:5px 6px; font-size:13px; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-secondary); color:var(--text-primary);">
-                                <option>Mon</option><option>Tue</option><option>Wed</option><option>Thu</option><option>Fri</option><option>Sat</option><option>Sun</option>
-                            </select>
-                        </div>
+                    <div id="reg-sess-days-${p.id}" style="display:flex; gap:5px; flex-wrap:wrap; margin-bottom:8px;">
+                        ${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => `<button data-day="${d}" data-selected="0" onclick="toggleRegistryDayChip(this)" style="padding:4px 10px; font-size:12px; border:1px solid var(--border-color); border-radius:20px; cursor:pointer; background:var(--bg-secondary); color:var(--text-primary); font-weight:500;">${d}</button>`).join('')}
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr auto; gap:6px; align-items:end;">
                         <div>
                             <div style="font-size:11px; color:var(--text-secondary); margin-bottom:2px;">Start</div>
                             <input type="time" id="reg-sess-start-${p.id}" style="padding:5px 6px; font-size:13px; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-secondary); color:var(--text-primary); width:100%;">
@@ -6649,18 +6717,43 @@ function saveWeightAdjustments() {}
             }).join('');
         }
 
+        function toggleRegistryDayChip(btn) {
+            const sel = btn.dataset.selected === '1';
+            btn.dataset.selected = sel ? '0' : '1';
+            btn.style.background = sel ? 'var(--bg-secondary)' : 'var(--accent-color)';
+            btn.style.color = sel ? 'var(--text-primary)' : '#fff';
+            btn.style.borderColor = sel ? 'var(--border-color)' : 'var(--accent-color)';
+        }
+
         function addRegistrySession(id) {
-            const day = document.getElementById(`reg-sess-day-${id}`)?.value;
+            const daysContainer = document.getElementById(`reg-sess-days-${id}`);
+            const selectedDays = daysContainer
+                ? Array.from(daysContainer.querySelectorAll('[data-selected="1"]')).map(b => b.dataset.day)
+                : [];
             const startTime = document.getElementById(`reg-sess-start-${id}`)?.value;
             const endTime = document.getElementById(`reg-sess-end-${id}`)?.value;
+            if (!selectedDays.length) return alert('Please select at least one day');
             if (!startTime || !endTime) return alert('Please set start and end times');
             if (startTime >= endTime) return alert('End time must be after start time');
             const p = projects.find(x => x.id === id);
             if (!p) return;
             if (!p.scheduledSessions) p.scheduledSessions = [];
-            p.scheduledSessions.push({ day, startTime, endTime });
+            selectedDays.forEach(day => p.scheduledSessions.push({ day, startTime, endTime }));
             saveProjects();
             renderRegistrySessions(id);
+            // Reset day chips
+            if (daysContainer) {
+                daysContainer.querySelectorAll('[data-selected="1"]').forEach(b => {
+                    b.dataset.selected = '0';
+                    b.style.background = 'var(--bg-secondary)';
+                    b.style.color = 'var(--text-primary)';
+                    b.style.borderColor = 'var(--border-color)';
+                });
+            }
+            const startEl = document.getElementById(`reg-sess-start-${id}`);
+            const endEl = document.getElementById(`reg-sess-end-${id}`);
+            if (startEl) startEl.value = '';
+            if (endEl) endEl.value = '';
         }
 
         function removeRegistrySession(id, index) {

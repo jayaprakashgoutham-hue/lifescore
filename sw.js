@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lifescore-v17';
+const CACHE_NAME = 'lifescore-v19';
 const ASSETS = ['.', 'index.html', 'css/styles.css', 'js/app.js'];
 
 self.addEventListener('install', event => {
