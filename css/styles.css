@@ -3522,13 +3522,22 @@
 .timeline-item--failed  { border-color: rgba(217,48,37,.4); opacity: 0.8; }
 .timeline-item--skipped { border-color: rgba(128,128,128,.35); opacity: 0.65; }
 .timeline-item--session { border-left: 3px solid var(--accent-color); }
+.timeline-item--due-yellow {
+    border-color: rgba(202, 138, 4, 0.75) !important;
+    box-shadow: inset 0 0 0 1000px rgba(254, 243, 199, 0.18);
+}
+.timeline-item--due-red {
+    border-color: rgba(220, 38, 38, 0.65) !important;
+    box-shadow: inset 0 0 0 1000px rgba(254, 226, 226, 0.18);
+}
 
 .timeline-time {
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
     color: var(--text-secondary);
-    min-width: 44px;
+    min-width: 86px;
     font-variant-numeric: tabular-nums;
+    white-space: nowrap;
 }
 .timeline-icon { font-size: 20px; }
 .timeline-body { flex: 1; min-width: 0; }

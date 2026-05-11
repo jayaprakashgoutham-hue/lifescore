@@ -178,6 +178,10 @@ let selectedProjectColor = '#1967d2';
 
             // Init cloud sync after UI is ready
             setTimeout(() => initCloudSync(), 800);
+            // Re-evaluate time-based highlights every 60s
+            setInterval(updateTimelineHighlights, 60000);
+            // Refresh activity log every 60s while app is open
+            setInterval(() => { if (document.getElementById('activityLogContainer')) renderActivityLog(); }, 60000);
         }
 
         function loadStoredJson(key, fallback) {
@@ -1685,6 +1689,7 @@ if (key === 'scoring') {
         updateChart();
         renderSessionAnalytics();
         renderHabitWeekChart();
+        renderActivityLog();
     }, 50);
 }
 if (key === 'island') {
@@ -2125,6 +2130,7 @@ function renderWeeklyProjectProgress() {
 
             el.innerHTML = html;
             initHabitSwipes(el);
+            updateTimelineHighlights();
         }
 
         function renderTimelineItem(item, dateStr) {
@@ -2140,19 +2146,21 @@ function renderWeeklyProjectProgress() {
                 const xp = getHabitXP(habit);
                 const streak = getHabitStreak(habit.id);
                 const streakHtml = streak >= 1 ? `<span class="habit-streak-badge">&#x1F525; ${streak}</span>` : '';
-                const durationHtml = habit.duration ? `<span class="timeline-duration">${habit.duration}m</span>` : '';
-                return `<div class="timeline-item timeline-item--habit habit-swipe-row ${stateClass}" data-habit-id="${habit.id}" data-date="${dateStr}" data-measurable="${habit.measurable ? '1' : '0'}">
+                const startTime = item.time || '';
+                const endTime = (startTime && habit.duration) ? addMinutesToTime(startTime, habit.duration) : '';
+                const timeDisplay = endTime ? `${startTime}–${endTime}` : startTime;
+                return `<div class="timeline-item timeline-item--habit habit-swipe-row ${stateClass}" data-habit-id="${habit.id}" data-date="${dateStr}" data-measurable="${habit.measurable ? '1' : '0'}" data-time="${startTime}">
                     <div class="swipe-bg-right">✓ Done</div>
                     <div class="swipe-bg-left">
                         <div class="swipe-skip">— Skip</div>
                         <div class="swipe-fail">✗ No</div>
                     </div>
                     <div class="swipe-content" onclick="openTodayHabitAction(${habit.id}, '${dateStr}')">
-                        <div class="timeline-time">${item.time || ''}</div>
+                        <div class="timeline-time">${timeDisplay}</div>
                         <div class="timeline-icon">${habit.icon || '🎯'}</div>
                         <div class="timeline-body">
                             <div class="timeline-name">${escapeHtml(habit.name)}</div>
-                            <div class="timeline-meta">${diffDisplay} · ${xp} XP ${streakHtml} ${durationHtml}</div>
+                            <div class="timeline-meta">${diffDisplay} · ${xp} XP ${streakHtml}${habit.duration ? ` · ${habit.duration}m` : ''}</div>
                         </div>
                         <div class="timeline-status ${stateIconClass}">${stateIcon}</div>
                     </div>
@@ -2161,17 +2169,47 @@ function renderWeeklyProjectProgress() {
                 // session block — "Start Session" button
                 const p = item.project;
                 const s = item.session;
-                const timeRange = `${s.startTime}–${s.endTime}`;
                 return `<div class="timeline-item timeline-item--session" style="cursor:default;">
-                    <div class="timeline-time">${s.startTime}</div>
+                    <div class="timeline-time">${s.startTime}–${s.endTime}</div>
                     <div class="timeline-icon" style="color:${p.color || 'var(--accent-color)'};">${p.icon || '📁'}</div>
                     <div class="timeline-body">
                         <div class="timeline-name">${escapeHtml(p.name)}</div>
-                        <div class="timeline-meta">${timeRange}${item.isOneOff ? ' · one-off' : ''}</div>
+                        <div class="timeline-meta">${item.isOneOff ? 'one-off' : 'scheduled'}</div>
                     </div>
                     <button class="btn-primary" onclick="event.stopPropagation(); openStartSessionModalWithProject(${p.id})" style="padding:5px 12px; font-size:12px; white-space:nowrap; flex-shrink:0; border-radius:20px;">Start</button>
                 </div>`;
             }
+        }
+
+        function updateTimelineHighlights() {
+            const now = new Date();
+            const currentMinutes = now.getHours() * 60 + now.getMinutes();
+            const todayStr = getLocalDateStr(now, true);
+            document.querySelectorAll('.timeline-item--habit[data-time]').forEach(el => {
+                const timeStr = el.dataset.time;
+                if (!timeStr) return;
+                const dateStr = el.dataset.date;
+                if (dateStr !== todayStr) return;
+                const habitId = parseInt(el.dataset.habitId);
+                const log = habitLogs[habitId]?.[dateStr];
+                const state = getHabitLogState(log);
+                if (state === 'done' || state === 'skipped' || state === 'failed') {
+                    el.classList.remove('timeline-item--due-yellow', 'timeline-item--due-red');
+                    return;
+                }
+                const [h, m] = timeStr.split(':').map(Number);
+                const scheduleMinutes = h * 60 + m;
+                const diffMinutes = currentMinutes - scheduleMinutes;
+                if (diffMinutes >= 0 && diffMinutes <= 15) {
+                    el.classList.add('timeline-item--due-yellow');
+                    el.classList.remove('timeline-item--due-red');
+                } else if (diffMinutes > 15) {
+                    el.classList.add('timeline-item--due-red');
+                    el.classList.remove('timeline-item--due-yellow');
+                } else {
+                    el.classList.remove('timeline-item--due-yellow', 'timeline-item--due-red');
+                }
+            });
         }
 
         function openStartSessionModalWithProject(projectId) {
@@ -2180,6 +2218,12 @@ function renderWeeklyProjectProgress() {
                 const sel = document.getElementById('sessionProjectSelect');
                 if (sel) sel.value = projectId;
             }, 50);
+        }
+
+        function addMinutesToTime(timeStr, minutes) {
+            const [h, m] = timeStr.split(':').map(Number);
+            const total = h * 60 + m + minutes;
+            return `${String(Math.floor(total / 60) % 24).padStart(2,'0')}:${String(total % 60).padStart(2,'0')}`;
         }
 
         function expandTo60MinBlocks(startTime, endTime) {
@@ -5535,7 +5579,79 @@ function renderNotesLog(startDate, endDate) {
             </div>`;
     }).join('');
 }
-        
+
+function renderActivityLog() {
+    const container = document.getElementById('activityLogContainer');
+    if (!container) return;
+
+    const now = Date.now();
+    const todayStr = getLocalDateStr(new Date(), true);
+    const oneHourMs = 60 * 60 * 1000;
+    const entries = [];
+
+    // Habit completions today, completed more than 1 hour ago
+    habits.forEach(h => {
+        const log = habitLogs[h.id]?.[todayStr];
+        if (!log || !log.timestamp) return;
+        const state = getHabitLogState(log);
+        if (state === 'blank') return;
+        const completionTime = new Date(log.timestamp).getTime();
+        if (now - completionTime < oneHourMs) return;
+        entries.push({
+            time: new Date(log.timestamp),
+            type: 'habit',
+            name: h.name,
+            icon: h.icon || '🎯',
+            state,
+            note: log.note || ''
+        });
+    });
+
+    // Session completions today, ended more than 1 hour ago
+    sessionLogs.forEach(s => {
+        if (!s.completed || !s.endTime) return;
+        const sessionDate = getLocalDateStr(new Date(s.startTime), true);
+        if (sessionDate !== todayStr) return;
+        if (now - s.endTime < oneHourMs) return;
+        entries.push({
+            time: new Date(s.endTime),
+            type: 'session',
+            name: s.projectName || 'Session',
+            icon: '📁',
+            state: 'done',
+            note: s.notes || ''
+        });
+    });
+
+    entries.sort((a, b) => b.time - a.time);
+
+    if (entries.length === 0) {
+        container.innerHTML = '<div style="color:var(--text-secondary); font-size:14px; padding:8px 0;">No entries yet — completed activities appear here after 1 hour.</div>';
+        return;
+    }
+
+    container.innerHTML = entries.map(e => {
+        const timeStr = e.time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+        const stateIcon = e.state === 'done' ? '✓' : e.state === 'skipped' ? '—' : '✗';
+        const stateColor = e.state === 'done' ? '#1E8E3E' : e.state === 'skipped' ? '#6b7280' : '#D93025';
+        const badge = e.type === 'session'
+            ? `<span style="font-size:11px;font-weight:600;padding:2px 7px;border-radius:10px;background:rgba(25,103,210,0.12);color:#1967d2;">Session</span>`
+            : `<span style="font-size:11px;font-weight:600;padding:2px 7px;border-radius:10px;background:rgba(13,148,136,0.12);color:#0d9488;">Habit</span>`;
+        return `<div style="display:flex;gap:10px;padding:10px 12px;background:var(--bg-tertiary);border-radius:8px;border-left:3px solid ${stateColor};">
+            <div style="font-size:11px;font-weight:600;color:var(--text-secondary);min-width:44px;font-variant-numeric:tabular-nums;padding-top:2px;">${timeStr}</div>
+            <div style="flex:1;min-width:0;">
+                <div style="display:flex;align-items:center;gap:6px;${e.note ? 'margin-bottom:4px;' : ''}">
+                    <span style="font-size:15px;">${e.icon}</span>
+                    ${badge}
+                    <span style="font-size:13px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(e.name)}</span>
+                    <span style="font-size:13px;font-weight:700;color:${stateColor};">${stateIcon}</span>
+                </div>
+                ${e.note ? `<div style="font-size:12px;color:var(--text-secondary);white-space:pre-wrap;line-height:1.45;">${escapeHtml(e.note)}</div>` : ''}
+            </div>
+        </div>`;
+    }).join('');
+}
+
         function calculateScores() {
     if (!settings.gamificationEnabled) return;
 
