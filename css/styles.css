@@ -3573,6 +3573,16 @@
     border-top: 1px solid var(--border-color);
 }
 
+.timeline-item--break {
+    border-left: 3px solid #6366f1;
+    background: rgba(99, 102, 241, 0.06);
+    opacity: 0.7;
+    pointer-events: none;
+}
+[data-theme="dark"] .timeline-item--break {
+    background: rgba(99, 102, 241, 0.12);
+}
+
 .adherence-chart-grid {
     display: grid;
     grid-template-columns: 200px 1fr;

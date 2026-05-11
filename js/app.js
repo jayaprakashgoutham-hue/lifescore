@@ -2179,10 +2179,57 @@ function renderWeeklyProjectProgress() {
             const completedFromUnscheduled = unscheduledItems.filter(i => isHabitActedOn(i));
             const completedItems = [...completedFromScheduled, ...completedFromUnscheduled];
 
+            // Compute break blocks for gaps within wake-sleep window
+            const breakBlocks = [];
+            const wakeT = settings.wakeTime;
+            const sleepT = settings.sleepTime;
+            if (wakeT && sleepT) {
+                const wakeMin = timeToMin(wakeT);
+                const sleepMin = timeToMin(sleepT);
+                if (sleepMin > wakeMin) {
+                    // Build occupied ranges from ALL timed scheduled items
+                    const ranges = [];
+                    scheduledItems.forEach(item => {
+                        if (!item.time) return;
+                        const startM = timeToMin(item.time);
+                        let endM;
+                        if (item.type === 'habit') endM = startM + (item.habit.duration || 30);
+                        else if (item.type === 'session') endM = timeToMin(item.session.endTime);
+                        else return;
+                        if (startM >= sleepMin || endM <= wakeMin) return;
+                        ranges.push([Math.max(startM, wakeMin), Math.min(endM, sleepMin)]);
+                    });
+                    // Sort and merge overlapping ranges
+                    ranges.sort((a, b) => a[0] - b[0]);
+                    const merged = [];
+                    for (const [s, e] of ranges) {
+                        if (!merged.length || s > merged[merged.length - 1][1]) merged.push([s, e]);
+                        else merged[merged.length - 1][1] = Math.max(merged[merged.length - 1][1], e);
+                    }
+                    // Find gaps between merged ranges within wake-sleep window
+                    const MIN_BREAK_MIN = 15;
+                    let cursor = wakeMin;
+                    for (const [s, e] of merged) {
+                        if (s > cursor && s - cursor >= MIN_BREAK_MIN) {
+                            breakBlocks.push({ type: 'break', time: minToTime(cursor), endTime: minToTime(s), durationMin: s - cursor, key: `break_${cursor}` });
+                        }
+                        cursor = Math.max(cursor, e);
+                        if (cursor >= sleepMin) break;
+                    }
+                    if (cursor < sleepMin && sleepMin - cursor >= MIN_BREAK_MIN) {
+                        breakBlocks.push({ type: 'break', time: minToTime(cursor), endTime: minToTime(sleepMin), durationMin: sleepMin - cursor, key: `break_${cursor}` });
+                    }
+                }
+            }
+
+            // Merge break blocks into active scheduled section, sorted by time
+            const scheduledWithBreaks = [...activeScheduled, ...breakBlocks]
+                .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+
             let html = '';
 
-            // Active scheduled items
-            activeScheduled.forEach(item => { html += renderTimelineItem(item, dateStr); });
+            // Active scheduled items (with breaks interleaved)
+            scheduledWithBreaks.forEach(item => { html += renderTimelineItem(item, dateStr); });
 
             // Active unscheduled section
             if (activeUnscheduled.length > 0) {
@@ -2206,6 +2253,19 @@ function renderWeeklyProjectProgress() {
         }
 
         function renderTimelineItem(item, dateStr) {
+            if (item.type === 'break') {
+                const dur = item.durationMin >= 60
+                    ? `${Math.floor(item.durationMin / 60)}h${item.durationMin % 60 ? ' ' + (item.durationMin % 60) + 'm' : ''}`
+                    : `${item.durationMin}m`;
+                return `<div class="timeline-item timeline-item--break" data-time="${item.time}">
+                    <div class="timeline-time">${item.time}–${item.endTime}</div>
+                    <div class="timeline-icon">☕</div>
+                    <div class="timeline-body">
+                        <div class="timeline-name">Free Time</div>
+                        <div class="timeline-meta">${dur} · unscheduled</div>
+                    </div>
+                </div>`;
+            }
             if (item.type === 'habit') {
                 const habit = item.habit;
                 const log = habitLogs[habit.id]?.[dateStr];
@@ -2353,6 +2413,15 @@ function renderWeeklyProjectProgress() {
             const [h, m] = timeStr.split(':').map(Number);
             const total = h * 60 + m + minutes;
             return `${String(Math.floor(total / 60) % 24).padStart(2,'0')}:${String(total % 60).padStart(2,'0')}`;
+        }
+        function timeToMin(timeStr) {
+            if (!timeStr) return 0;
+            const [h, m] = timeStr.split(':').map(Number);
+            return (h || 0) * 60 + (m || 0);
+        }
+        function minToTime(min) {
+            const clamped = ((min % 1440) + 1440) % 1440;
+            return `${String(Math.floor(clamped / 60)).padStart(2,'0')}:${String(clamped % 60).padStart(2,'0')}`;
         }
 
         function expandTo60MinBlocks(startTime, endTime) {
@@ -6043,6 +6112,10 @@ function renderScoringBreakdown(dateStr) {
             }
             document.getElementById('settingSessionEndSound').value = sessionEndSound || 'bellChime';
             document.getElementById('settingDayCutoffTime').value = dayCutoffTime || '03:00';
+            const wakeEl = document.getElementById('settingWakeTime');
+            if (wakeEl) wakeEl.value = settings.wakeTime || '06:00';
+            const sleepEl = document.getElementById('settingSleepTime');
+            if (sleepEl) sleepEl.value = settings.sleepTime || '23:00';
             const weekStartEl = document.getElementById('settingWeekStartsOn');
             if (weekStartEl) weekStartEl.value = String(settings.weekStartsOn !== undefined ? settings.weekStartsOn : 1);
             document.getElementById('settingsModal').classList.add('active');
@@ -6087,6 +6160,8 @@ function renderScoringBreakdown(dateStr) {
     }
     sessionEndSound = document.getElementById('settingSessionEndSound')?.value || 'bellChime';
     dayCutoffTime = document.getElementById('settingDayCutoffTime')?.value || '03:00';
+    settings.wakeTime = document.getElementById('settingWakeTime')?.value || '';
+    settings.sleepTime = document.getElementById('settingSleepTime')?.value || '';
     const weekStartVal = parseInt(document.getElementById('settingWeekStartsOn')?.value);
     settings.weekStartsOn = isNaN(weekStartVal) ? 1 : weekStartVal;
 
