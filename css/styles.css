@@ -3573,6 +3573,26 @@
     border-top: 1px solid var(--border-color);
 }
 
+.adherence-chart-grid {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 16px;
+    align-items: start;
+    margin-bottom: 14px;
+}
+@media (max-width: 640px) {
+    .adherence-chart-grid {
+        grid-template-columns: 1fr;
+    }
+    .adherence-chart-grid canvas {
+        width: 160px !important;
+        height: 160px !important;
+        max-height: 160px;
+        margin: 0 auto;
+        display: block;
+    }
+}
+
 /* Plan Today modal items */
 .plan-today-item {
     display: flex;

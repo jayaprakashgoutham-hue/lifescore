@@ -832,8 +832,14 @@ function refreshTotalXPDisplay() {
             _logMissedStart = startTimeStr;
             _logMissedEnd = endTimeStr;
             _logMissedMaxH = durMins / 60;
-            const infoEl = document.getElementById('logMissedProjectInfo');
-            if (infoEl) infoEl.innerHTML = `<b>${escapeHtml(project.name)}</b> &nbsp;·&nbsp; ${startTimeStr}–${endTimeStr} (${durMins} min)`;
+            const timeEl = document.getElementById('logMissedTimeInfo');
+            if (timeEl) timeEl.textContent = `${startTimeStr}–${endTimeStr} (${durMins} min)`;
+            const selectEl = document.getElementById('logMissedProjectSelect');
+            if (selectEl) {
+                selectEl.innerHTML = projects.map(p =>
+                    `<option value="${p.id}"${p.id === projectId ? ' selected' : ''}>${escapeHtml(p.name)}</option>`
+                ).join('');
+            }
             const hoursEl = document.getElementById('logMissedHours');
             if (hoursEl) { hoursEl.value = (durMins / 60).toFixed(2); hoursEl.max = _logMissedMaxH; }
             const noteEl = document.getElementById('logMissedNote');
@@ -845,8 +851,10 @@ function refreshTotalXPDisplay() {
             const hoursEl = document.getElementById('logMissedHours');
             const noteEl = document.getElementById('logMissedNote');
             const hours = parseFloat(hoursEl?.value);
-            if (!hours || hours <= 0) return alert('Please enter hours completed');
-            const project = projects.find(p => p.id === _logMissedProjectId);
+            if (hours == null || isNaN(hours) || hours < 0) return alert('Please enter a valid number of hours');
+            const selectEl = document.getElementById('logMissedProjectSelect');
+            const projectId = selectEl && selectEl.value ? parseInt(selectEl.value) : _logMissedProjectId;
+            const project = projects.find(p => p.id === projectId);
             if (!project) return;
             const [sh, sm] = _logMissedStart.split(':').map(Number);
             const todayStr = getLocalDateStr(new Date(), true);
@@ -2860,6 +2868,10 @@ function renderWeeklyProjectProgress() {
         }
         function _executeHabitDone(habit, dateStr, preserveStreak) {
             setHabitLogState(habit.id, dateStr, 'done', habit.target_value || 1);
+            if (_todayHabitNote && habitLogs[String(habit.id)]?.[dateStr]) {
+                habitLogs[String(habit.id)][dateStr].note = _todayHabitNote;
+            }
+            _todayHabitNote = '';
             saveHabitLogs();
             const baseXP = getHabitXP(habit);
             const { streakCount, milestone } = applyHabitStreak(habit, dateStr, preserveStreak);
@@ -2871,6 +2883,7 @@ function renderWeeklyProjectProgress() {
 
         let _todayHabitId = null;
         let _todayHabitDate = null;
+        let _todayHabitNote = '';
         let _sessionHabitsCompleted = 0;
         let _pendingComboBonus = false;
 
@@ -3081,6 +3094,8 @@ function renderWeeklyProjectProgress() {
             document.getElementById('todayHabitModal').classList.remove('active');
             _todayHabitId = null;
             _todayHabitDate = null;
+            const noteEl = document.getElementById('todayHabitNote');
+            if (noteEl) noteEl.value = '';
         }
 
         function todayMarkHabitDone() {
@@ -3088,6 +3103,7 @@ function renderWeeklyProjectProgress() {
             const habit = habits.find(h => String(h.id) === String(_todayHabitId));
             if (!habit) return;
             const dateStr = _todayHabitDate;
+            _todayHabitNote = (document.getElementById('todayHabitNote')?.value || '').trim();
             const sd = streakData[String(habit.id)] || {};
             const wouldBreak = (sd.current || 0) > 0 && sd.lastCompleted && sd.lastCompleted !== dateStr
                 && hasMissedDays(habit, sd.lastCompleted, dateStr);
@@ -3123,6 +3139,7 @@ function renderWeeklyProjectProgress() {
             if (!_todayHabitId) return;
             const val = parseFloat(document.getElementById('todayHabitValueInput').value);
             if (isNaN(val) || val < 0) return;
+            const noteVal = (document.getElementById('todayHabitNote')?.value || '').trim();
             const habit = habits.find(h => String(h.id) === String(_todayHabitId));
             const dateStr = _todayHabitDate;
             const isNegativeHabit = (habit?.type === 'negative') || (habit?.habitType === 'negative');
@@ -3133,13 +3150,16 @@ function renderWeeklyProjectProgress() {
                     state = targetMet ? 'done' : 'failed';
                 } else {
                     targetMet = val >= (habit?.target_value || 1);
-                    state = targetMet ? 'done' : 'blank';
+                    state = targetMet ? 'done' : 'failed';
                 }
             } else {
                 targetMet = val > 0;
-                state = targetMet ? 'done' : 'blank';
+                state = targetMet ? 'done' : 'failed';
             }
             setHabitLogState(_todayHabitId, dateStr, state, val);
+            if (noteVal && habitLogs[String(_todayHabitId)]?.[dateStr]) {
+                habitLogs[String(_todayHabitId)][dateStr].note = noteVal;
+            }
             saveHabitLogs();
             if (targetMet && habit) {
                 const sd = streakData[String(habit.id)] || {};
@@ -6941,6 +6961,10 @@ function saveWeightAdjustments() {}
                     <span style="cursor:grab; color:var(--text-secondary); font-size:18px; padding:0 2px; flex-shrink:0; user-select:none;" title="Drag to reorder">⠿</span>
                     <span style="flex:1; font-size:15px; font-weight:500; min-width:80px;" id="proj-name-${p.id}">${escapeHtml(p.name)}</span>
                     <input type="text" class="modal-input" id="proj-edit-${p.id}" value="${escapeHtml(p.name)}" style="display:none; flex:1; padding:6px 10px; font-size:14px; margin-bottom:0;" onkeydown="if(event.key==='Enter')saveProjectEdit(${p.id}); else if(event.key==='Escape')cancelProjectEdit(${p.id})">
+                    <div id="proj-edit-btns-${p.id}" style="display:none; gap:4px; flex-shrink:0;">
+                        <button onclick="saveProjectEdit(${p.id})" style="padding:4px 12px; background:var(--accent-color); color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:13px; font-weight:600;">✓</button>
+                        <button onclick="cancelProjectEdit(${p.id})" style="padding:4px 10px; background:none; border:1px solid var(--border-color); border-radius:6px; cursor:pointer; font-size:13px; color:var(--text-secondary);">✕</button>
+                    </div>
                     <div style="display:flex; align-items:center; gap:5px; flex-shrink:0;">
                         <input type="number" min="0" max="168" step="0.5" id="proj-target-${p.id}" value="${p.weeklyTargetHours || ''}" placeholder="—" style="width:58px; padding:5px 8px; font-size:13px; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-tertiary); color:var(--text-primary); text-align:center;" title="Weekly target hours"
                             oninput="renderProjectRegistryTotal()"
@@ -7109,9 +7133,11 @@ function saveWeightAdjustments() {}
             closeAllProjectMenus();
             const nameEl = document.getElementById(`proj-name-${id}`);
             const editInput = document.getElementById(`proj-edit-${id}`);
+            const editBtns = document.getElementById(`proj-edit-btns-${id}`);
             if (!nameEl || !editInput) return;
             nameEl.style.display = 'none';
             editInput.style.display = 'block';
+            if (editBtns) editBtns.style.display = 'flex';
             editInput.focus();
             editInput.select();
         }
@@ -7119,13 +7145,16 @@ function saveWeightAdjustments() {}
             const p = projects.find(p => p.id === id);
             const nameEl = document.getElementById(`proj-name-${id}`);
             const editInput = document.getElementById(`proj-edit-${id}`);
+            const editBtns = document.getElementById(`proj-edit-btns-${id}`);
             if (!nameEl || !editInput) return;
             if (p) editInput.value = p.name;
             nameEl.style.display = '';
             editInput.style.display = 'none';
+            if (editBtns) editBtns.style.display = 'none';
         }
         function saveProjectEdit(id) {
             const editInput = document.getElementById(`proj-edit-${id}`);
+            const editBtns = document.getElementById(`proj-edit-btns-${id}`);
             const name = editInput ? editInput.value.trim() : '';
             if (!name) return;
             const p = projects.find(p => p.id === id);
@@ -7139,6 +7168,7 @@ function saveWeightAdjustments() {}
             const nameEl = document.getElementById(`proj-name-${id}`);
             if (nameEl) { nameEl.textContent = name; nameEl.style.display = ''; }
             if (editInput) editInput.style.display = 'none';
+            if (editBtns) editBtns.style.display = 'none';
         }
         function deleteProjectFromRegistry(id) {
             closeAllProjectMenus();
