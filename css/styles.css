@@ -3720,3 +3720,213 @@
 
 /* Session block in timeline: no pointer on outer shell */
 .timeline-item--session { cursor: default !important; }
+
+/* ── Weekly Template Modal ───────────────────────────────────────── */
+.weekly-template-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(120px, 1fr));
+    gap: 6px;
+    overflow-x: auto;
+    overflow-y: auto;
+    padding: 12px 14px 14px;
+    flex: 1;
+    min-height: 0;
+}
+
+.wt-col {
+    display: flex;
+    flex-direction: column;
+    border-radius: 10px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    overflow: hidden;
+    min-width: 0;
+}
+
+.wt-col--today {
+    border-color: var(--accent-color);
+    background: rgba(25, 103, 210, 0.05);
+}
+
+[data-theme="dark"] .wt-col--today {
+    background: rgba(138, 180, 248, 0.06);
+}
+
+.wt-col--past {
+    opacity: 0.6;
+}
+
+.wt-header {
+    padding: 8px 6px 6px;
+    text-align: center;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    flex-shrink: 0;
+}
+
+.wt-abbr {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-secondary);
+}
+
+.wt-col--today .wt-abbr {
+    color: var(--accent-color);
+}
+
+.wt-daynum {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.2;
+}
+
+.wt-col--today .wt-daynum {
+    color: var(--accent-color);
+}
+
+.wt-body {
+    padding: 6px 5px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+    overflow-y: auto;
+}
+
+.wt-item {
+    border-radius: 6px;
+    padding: 5px 7px;
+    font-size: 11px;
+    border-left: 3px solid transparent;
+    position: relative;
+}
+
+.wt-item--habit {
+    background: rgba(16, 185, 129, 0.10);
+    border-left-color: #10b981;
+}
+
+[data-theme="dark"] .wt-item--habit {
+    background: rgba(16, 185, 129, 0.08);
+}
+
+.wt-item--session {
+    background: rgba(25, 103, 210, 0.09);
+    border-left-color: var(--accent-color);
+}
+
+[data-theme="dark"] .wt-item--session {
+    background: rgba(138, 180, 248, 0.08);
+}
+
+.wt-name {
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.3;
+}
+
+.wt-time {
+    font-size: 10px;
+    color: var(--text-secondary);
+    margin-top: 1px;
+}
+
+.wt-moved {
+    font-size: 10px;
+    color: var(--accent-color);
+    font-weight: 600;
+    margin-top: 1px;
+}
+
+.wt-move-btn {
+    display: block;
+    width: 100%;
+    margin-top: 4px;
+    padding: 2px 0;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--accent-color);
+    background: transparent;
+    border: 1px solid var(--accent-color);
+    border-radius: 4px;
+    cursor: pointer;
+    text-align: center;
+    line-height: 1.5;
+}
+
+.wt-move-btn:hover {
+    background: rgba(25, 103, 210, 0.1);
+}
+
+.wt-hr {
+    height: 1px;
+    background: var(--border-color);
+    margin: 4px 0;
+}
+
+.wt-empty {
+    font-size: 11px;
+    color: var(--text-secondary);
+    text-align: center;
+    padding: 8px 0;
+    opacity: 0.7;
+}
+
+/* ── Session moved badge (Today timeline) ────────────────────────── */
+.session-moved-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--accent-color);
+    background: rgba(25, 103, 210, 0.1);
+    border-radius: 4px;
+    padding: 1px 5px;
+    margin-left: 5px;
+    vertical-align: middle;
+    line-height: 1.5;
+}
+
+[data-theme="dark"] .session-moved-badge {
+    background: rgba(138, 180, 248, 0.12);
+}
+
+/* ── Move Session Day Picker ─────────────────────────────────────── */
+.move-day-btn {
+    padding: 8px 4px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+    transition: background 0.15s, border-color 0.15s;
+    line-height: 1.3;
+}
+
+.move-day-btn:hover {
+    background: rgba(25, 103, 210, 0.1);
+    border-color: var(--accent-color);
+}
+
+.move-day-btn.move-day-current {
+    background: rgba(25, 103, 210, 0.12);
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+}
+
+.move-day-btn.move-day-today {
+    border-color: #10b981;
+    color: #10b981;
+}
+
+.move-day-btn.move-day-today.move-day-current {
+    background: rgba(16, 185, 129, 0.12);
+}
