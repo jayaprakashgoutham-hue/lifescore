@@ -180,8 +180,6 @@ let selectedProjectColor = '#1967d2';
             setTimeout(() => initCloudSync(), 800);
             // Re-evaluate time-based highlights every 60s
             setInterval(updateTimelineHighlights, 60000);
-            // Refresh activity log every 60s while app is open
-            setInterval(() => { if (document.getElementById('activityLogContainer')) renderActivityLog(); }, 60000);
         }
 
         function loadStoredJson(key, fallback) {
@@ -822,6 +820,62 @@ function refreshTotalXPDisplay() {
     checkWorldIslandUnlocks(true);
 }
 
+        let _logMissedProjectId = null, _logMissedStart = null, _logMissedEnd = null, _logMissedMaxH = 1;
+
+        function openLogMissedModal(projectId, startTimeStr, endTimeStr) {
+            const project = projects.find(p => p.id === projectId);
+            if (!project) return;
+            const [sh, sm] = startTimeStr.split(':').map(Number);
+            const [eh, em] = endTimeStr.split(':').map(Number);
+            const durMins = (eh * 60 + em) - (sh * 60 + sm);
+            _logMissedProjectId = projectId;
+            _logMissedStart = startTimeStr;
+            _logMissedEnd = endTimeStr;
+            _logMissedMaxH = durMins / 60;
+            const infoEl = document.getElementById('logMissedProjectInfo');
+            if (infoEl) infoEl.innerHTML = `<b>${escapeHtml(project.name)}</b> &nbsp;·&nbsp; ${startTimeStr}–${endTimeStr} (${durMins} min)`;
+            const hoursEl = document.getElementById('logMissedHours');
+            if (hoursEl) { hoursEl.value = (durMins / 60).toFixed(2); hoursEl.max = _logMissedMaxH; }
+            const noteEl = document.getElementById('logMissedNote');
+            if (noteEl) noteEl.value = '';
+            document.getElementById('logMissedModal').classList.add('active');
+        }
+
+        function saveLogMissedSession() {
+            const hoursEl = document.getElementById('logMissedHours');
+            const noteEl = document.getElementById('logMissedNote');
+            const hours = parseFloat(hoursEl?.value);
+            if (!hours || hours <= 0) return alert('Please enter hours completed');
+            const project = projects.find(p => p.id === _logMissedProjectId);
+            if (!project) return;
+            const [sh, sm] = _logMissedStart.split(':').map(Number);
+            const todayStr = getLocalDateStr(new Date(), true);
+            const startTs = new Date(todayStr + 'T00:00:00').getTime() + (sh * 60 + sm) * 60000;
+            const workedMin = Math.round(hours * 60);
+            const endTs = startTs + workedMin * 60000;
+            const session = {
+                id: Date.now(), date: todayStr,
+                projectId: project.id, projectName: project.name,
+                duration: workedMin, startTime: startTs, endTime: endTs,
+                stopwatch: false, activeTasks: [], tasksCompleted: [],
+                notes: noteEl?.value.trim() || '',
+                completed: true, interrupted: false, source: 'manual'
+            };
+            if (settings.gamificationEnabled) {
+                const rtid = `session_${session.id}`;
+                if (!taskLogs[rtid]) taskLogs[rtid] = {};
+                taskLogs[rtid][todayStr] = { completed: true, points: settings.scoring?.sessions?.completionPoints || 5 };
+                saveTaskLogs();
+            }
+            sessionLogs.push(session);
+            saveSessionLogs();
+            document.getElementById('logMissedModal').classList.remove('active');
+            renderTodayView();
+            if (settings.gamificationEnabled) { calculateScores(); renderSessionAnalytics(); }
+            const xp = calcSessionXP(session);
+            if (xp > 0) showXpGainPopup(xp);
+        }
+
         function openStartSessionModal() {
     const projectSelect = document.getElementById('sessionProjectSelect');
     const noMsg = document.getElementById('sessionNoProjectsMsg');
@@ -1329,6 +1383,16 @@ function toggleActiveSessionMinimize() {
 
     container.style.display = 'block';
     projectEl.textContent = activeSession.projectName;
+    const blockEl = document.getElementById('activeSessionScheduledBlock');
+    if (blockEl) {
+        if (activeSession._scheduledBlock) { blockEl.textContent = '📅 ' + activeSession._scheduledBlock; blockEl.style.display = ''; }
+        else blockEl.style.display = 'none';
+    }
+    const msgEl = document.getElementById('activeSessionMotivationalMsg');
+    if (msgEl) {
+        if (activeSession._focusMsg) { msgEl.textContent = '"' + activeSession._focusMsg + '"'; msgEl.style.display = ''; }
+        else msgEl.style.display = 'none';
+    }
     const mobileHandleName = document.getElementById('mobileHandleName');
     if (mobileHandleName) mobileHandleName.textContent = activeSession.projectName;
     const buddyEl = document.getElementById('activeSessionBuddy');
@@ -1689,7 +1753,7 @@ if (key === 'scoring') {
         updateChart();
         renderSessionAnalytics();
         renderHabitWeekChart();
-        renderActivityLog();
+        renderAdherenceAnalytics();
     }, 50);
 }
 if (key === 'island') {
@@ -2166,49 +2230,68 @@ function renderWeeklyProjectProgress() {
                     </div>
                 </div>`;
             } else {
-                // session block — "Start Session" button
+                // session block
                 const p = item.project;
                 const s = item.session;
-                return `<div class="timeline-item timeline-item--session" style="cursor:default;">
+                return `<div class="timeline-item timeline-item--session" style="cursor:default;" data-time="${s.startTime}" data-date="${dateStr}" data-project-id="${p.id}">
                     <div class="timeline-time">${s.startTime}–${s.endTime}</div>
                     <div class="timeline-icon" style="color:${p.color || 'var(--accent-color)'};">${p.icon || '📁'}</div>
                     <div class="timeline-body">
                         <div class="timeline-name">${escapeHtml(p.name)}</div>
                         <div class="timeline-meta">${item.isOneOff ? 'one-off' : 'scheduled'}</div>
                     </div>
-                    <button class="btn-primary" onclick="event.stopPropagation(); openStartSessionModalWithProject(${p.id})" style="padding:5px 12px; font-size:12px; white-space:nowrap; flex-shrink:0; border-radius:20px;">Start</button>
+                    <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;flex-shrink:0;">
+                        <button class="btn-primary" onclick="event.stopPropagation(); startTimedSessionDirect(${p.id},'${s.startTime}','${s.endTime}')" style="padding:5px 12px; font-size:12px; white-space:nowrap; border-radius:20px;">Start</button>
+                        <button onclick="event.stopPropagation(); openLogMissedModal(${p.id},'${s.startTime}','${s.endTime}')" style="background:none;border:none;font-size:11px;color:var(--text-secondary);cursor:pointer;padding:0;text-decoration:underline;white-space:nowrap;">Log Missed</button>
+                    </div>
                 </div>`;
             }
         }
 
-        function updateTimelineHighlights() {
+        function _applyTimeHighlight(el, timeStr, todayStr, isActedOn) {
+            const dateStr = el.dataset.date;
+            if (dateStr !== todayStr) { el.classList.remove('timeline-item--due-yellow', 'timeline-item--due-red'); return; }
+            if (!timeStr || isActedOn) { el.classList.remove('timeline-item--due-yellow', 'timeline-item--due-red'); return; }
             const now = new Date();
             const currentMinutes = now.getHours() * 60 + now.getMinutes();
-            const todayStr = getLocalDateStr(now, true);
+            const [h, m] = timeStr.split(':').map(Number);
+            const diffMinutes = currentMinutes - (h * 60 + m);
+            if (diffMinutes >= 0 && diffMinutes <= 15) {
+                el.classList.add('timeline-item--due-yellow');
+                el.classList.remove('timeline-item--due-red');
+            } else if (diffMinutes > 15) {
+                el.classList.add('timeline-item--due-red');
+                el.classList.remove('timeline-item--due-yellow');
+            } else {
+                el.classList.remove('timeline-item--due-yellow', 'timeline-item--due-red');
+            }
+        }
+
+        function updateTimelineHighlights() {
+            const todayStr = getLocalDateStr(new Date(), true);
             document.querySelectorAll('.timeline-item--habit[data-time]').forEach(el => {
-                const timeStr = el.dataset.time;
-                if (!timeStr) return;
-                const dateStr = el.dataset.date;
-                if (dateStr !== todayStr) return;
                 const habitId = parseInt(el.dataset.habitId);
+                const dateStr = el.dataset.date;
                 const log = habitLogs[habitId]?.[dateStr];
                 const state = getHabitLogState(log);
-                if (state === 'done' || state === 'skipped' || state === 'failed') {
-                    el.classList.remove('timeline-item--due-yellow', 'timeline-item--due-red');
-                    return;
-                }
-                const [h, m] = timeStr.split(':').map(Number);
-                const scheduleMinutes = h * 60 + m;
-                const diffMinutes = currentMinutes - scheduleMinutes;
-                if (diffMinutes >= 0 && diffMinutes <= 15) {
-                    el.classList.add('timeline-item--due-yellow');
-                    el.classList.remove('timeline-item--due-red');
-                } else if (diffMinutes > 15) {
-                    el.classList.add('timeline-item--due-red');
-                    el.classList.remove('timeline-item--due-yellow');
-                } else {
-                    el.classList.remove('timeline-item--due-yellow', 'timeline-item--due-red');
-                }
+                const actedOn = state === 'done' || state === 'skipped' || state === 'failed';
+                _applyTimeHighlight(el, el.dataset.time, todayStr, actedOn);
+            });
+            document.querySelectorAll('.timeline-item--session[data-time]').forEach(el => {
+                const projectId = parseInt(el.dataset.projectId);
+                const dateStr = el.dataset.date;
+                const timeStr = el.dataset.time;
+                // Consider "done" if: active session for this project, OR completed session today for this project overlapping this block
+                const isActive = activeSession && activeSession.projectId === projectId;
+                const hasCompleted = sessionLogs.some(s => {
+                    if (!s.completed || !s.endTime) return false;
+                    if (s.projectId !== projectId) return false;
+                    if (getLocalDateStr(new Date(s.startTime), true) !== dateStr) return false;
+                    const sStartMins = new Date(s.startTime).getHours() * 60 + new Date(s.startTime).getMinutes();
+                    const [bh, bm] = timeStr.split(':').map(Number);
+                    return Math.abs(sStartMins - (bh * 60 + bm)) <= 60;
+                });
+                _applyTimeHighlight(el, timeStr, todayStr, isActive || hasCompleted);
             });
         }
 
@@ -2218,6 +2301,44 @@ function renderWeeklyProjectProgress() {
                 const sel = document.getElementById('sessionProjectSelect');
                 if (sel) sel.value = projectId;
             }, 50);
+        }
+
+        const FOCUS_MESSAGES = [
+            "Deep work = compound growth",
+            "One hour of focus beats three of distraction",
+            "Progress, not perfection",
+            "Every session is a deposit into your future",
+            "Distractions are detours. Stay on the path.",
+            "The quality of your focus shapes the quality of your results"
+        ];
+
+        function startTimedSessionDirect(projectId, startTimeStr, endTimeStr) {
+            if (activeSession) { alert('A session is already active. Please complete it first.'); return; }
+            const project = projects.find(p => p.id === projectId);
+            if (!project) return;
+            const [sh, sm] = startTimeStr.split(':').map(Number);
+            const [eh, em] = endTimeStr.split(':').map(Number);
+            const durationMinutes = (eh * 60 + em) - (sh * 60 + sm);
+            const start = Date.now();
+            const end = start + durationMinutes * 60 * 1000;
+            const dateStr = getLocalDateStr(new Date(start), true);
+            const session = {
+                id: start, date: dateStr,
+                projectId: project.id, projectName: project.name,
+                duration: durationMinutes,
+                startTime: start, endTime: end, stopwatch: false,
+                activeTasks: tasks.filter(t => t.project === projectId).map(t => t.id),
+                tasksCompleted: [], notes: '',
+                completed: false, interrupted: null,
+                _scheduledBlock: `${startTimeStr}–${endTimeStr}`,
+                _focusMsg: FOCUS_MESSAGES[Math.floor(Math.random() * FOCUS_MESSAGES.length)]
+            };
+            sessionLogs.push(session);
+            saveSessionLogs();
+            activeSession = session;
+            switchTab('today');
+            renderActiveSessionView();
+            startSessionTimer();
         }
 
         function addMinutesToTime(timeStr, minutes) {
@@ -2658,7 +2779,7 @@ function renderWeeklyProjectProgress() {
             _sessionHabitsCompleted++;
             const hitCombo = _comboThresholds.includes(_sessionHabitsCompleted);
             _pendingComboBonus = hitCombo;
-            showHabitSuccessModal(habit, baseXP, streakCount, milestone);
+            showHabitSuccessModal(habit, baseXP, streakCount, milestone, dateStr);
         }
         function updateGemDisplay() {
             const el = document.getElementById('todayGemCount');
@@ -2848,16 +2969,16 @@ function renderWeeklyProjectProgress() {
         /* ---- Habit Success Modal ---- */
         let _hsmHabitId = null;
         let _hsmDateStr = null;
-        function showHabitSuccessModal(habit, baseXP, streakCount, milestone) {
+        function showHabitSuccessModal(habit, baseXP, streakCount, milestone, dateStr) {
             const modal = document.getElementById('habitSuccessModal');
             if (!modal) return;
             _hsmHabitId = habit.id;
-            _hsmDateStr = _todayHabitDate;
+            _hsmDateStr = dateStr || _todayHabitDate;
             document.getElementById('hsmHabitName').textContent = habit.name;
             const totalXP = baseXP + (milestone ? milestone.xp : 0);
             const noteInput = document.getElementById('hsmNoteInput');
             if (noteInput) {
-                noteInput.value = habitLogs[habit.id]?.[_todayHabitDate]?.note || '';
+                noteInput.value = habitLogs[habit.id]?.[_hsmDateStr]?.note || '';
             }
             modal.style.display = 'flex';
             launchConfetti();
@@ -4345,6 +4466,9 @@ function unskipTask(taskId) {
                 list.sort((a, b) => habitReminderToMinutes(a.reminderTime) - habitReminderToMinutes(b.reminderTime));
             } else if (habitFilters.timeSort === 'latest') {
                 list.sort((a, b) => habitReminderToMinutes(b.reminderTime) - habitReminderToMinutes(a.reminderTime));
+            } else {
+                // Default: sort by scheduled time ascending, no-time habits go to bottom
+                list.sort((a, b) => habitReminderToMinutes(a.reminderTime) - habitReminderToMinutes(b.reminderTime));
             }
 
             if (habitFilters.nameSort === 'az') list.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
@@ -5580,73 +5704,117 @@ function renderNotesLog(startDate, endDate) {
     }).join('');
 }
 
-function renderActivityLog() {
-    const container = document.getElementById('activityLogContainer');
-    if (!container) return;
+function renderAdherenceAnalytics() {
+    const fromEl = document.getElementById('adherenceFrom');
+    const toEl = document.getElementById('adherenceTo');
+    if (!fromEl || !toEl) return;
 
-    const now = Date.now();
+    if (!fromEl.value) {
+        const now = new Date();
+        const monday = new Date(now);
+        const dow = now.getDay();
+        monday.setDate(now.getDate() - (dow === 0 ? 6 : dow - 1));
+        fromEl.value = getLocalDateStr(monday, true);
+    }
+    if (!toEl.value) toEl.value = getLocalDateStr(new Date(), true);
+
+    const fromDate = new Date(fromEl.value + 'T00:00:00');
+    const toDate = new Date(toEl.value + 'T23:59:59');
     const todayStr = getLocalDateStr(new Date(), true);
-    const oneHourMs = 60 * 60 * 1000;
-    const entries = [];
+    const nowMins = new Date().getHours() * 60 + new Date().getMinutes();
 
-    // Habit completions today, completed more than 1 hour ago
-    habits.forEach(h => {
-        const log = habitLogs[h.id]?.[todayStr];
-        if (!log || !log.timestamp) return;
-        const state = getHabitLogState(log);
-        if (state === 'blank') return;
-        const completionTime = new Date(log.timestamp).getTime();
-        if (now - completionTime < oneHourMs) return;
-        entries.push({
-            time: new Date(log.timestamp),
-            type: 'habit',
-            name: h.name,
-            icon: h.icon || '🎯',
-            state,
-            note: log.note || ''
+    const onTimeItems = [], lateItems = [], missedItems = [];
+
+    let cur = new Date(fromDate);
+    while (cur <= toDate) {
+        const dateStr = getLocalDateStr(cur, true);
+        const dayOfWeek = cur.getDay();
+        const isPast = dateStr < todayStr;
+        const isToday = dateStr === todayStr;
+
+        habits.forEach(h => {
+            if (!h.reminderTime) return;
+            const days = h.customDays || [0,1,2,3,4,5,6];
+            if (!days.includes(dayOfWeek)) return;
+            const start = h.startTrackingDate ? new Date(h.startTrackingDate + 'T00:00:00') : new Date(0);
+            if (cur < start) return;
+
+            const log = habitLogs[h.id]?.[dateStr];
+            const state = getHabitLogState(log);
+            const [sh, sm] = h.reminderTime.split(':').map(Number);
+            const scheduledMins = sh * 60 + sm;
+            const fmtDate = new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+            if (state === 'done') {
+                if (log.timestamp) {
+                    const ct = new Date(log.timestamp);
+                    const cMins = ct.getHours() * 60 + ct.getMinutes();
+                    const diff = cMins - scheduledMins;
+                    const actualStr = `${String(ct.getHours()).padStart(2,'0')}:${String(ct.getMinutes()).padStart(2,'0')}`;
+                    if (diff <= 15) {
+                        onTimeItems.push({ name: h.name, scheduled: h.reminderTime, actual: actualStr, diff, date: fmtDate });
+                    } else {
+                        lateItems.push({ name: h.name, scheduled: h.reminderTime, actual: actualStr, diff, date: fmtDate });
+                    }
+                } else {
+                    onTimeItems.push({ name: h.name, scheduled: h.reminderTime, actual: '—', diff: 0, date: fmtDate });
+                }
+            } else if (isPast || (isToday && nowMins > scheduledMins + 15)) {
+                const label = state === 'skipped' ? 'Skipped' : state === 'failed' ? 'Not done' : 'Not done';
+                missedItems.push({ name: h.name, scheduled: h.reminderTime, actual: label, date: fmtDate });
+            }
         });
-    });
 
-    // Session completions today, ended more than 1 hour ago
-    sessionLogs.forEach(s => {
-        if (!s.completed || !s.endTime) return;
-        const sessionDate = getLocalDateStr(new Date(s.startTime), true);
-        if (sessionDate !== todayStr) return;
-        if (now - s.endTime < oneHourMs) return;
-        entries.push({
-            time: new Date(s.endTime),
-            type: 'session',
-            name: s.projectName || 'Session',
-            icon: '📁',
-            state: 'done',
-            note: s.notes || ''
-        });
-    });
-
-    entries.sort((a, b) => b.time - a.time);
-
-    if (entries.length === 0) {
-        container.innerHTML = '<div style="color:var(--text-secondary); font-size:14px; padding:8px 0;">No entries yet — completed activities appear here after 1 hour.</div>';
-        return;
+        cur.setDate(cur.getDate() + 1);
     }
 
-    container.innerHTML = entries.map(e => {
-        const timeStr = e.time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
-        const stateIcon = e.state === 'done' ? '✓' : e.state === 'skipped' ? '—' : '✗';
-        const stateColor = e.state === 'done' ? '#1E8E3E' : e.state === 'skipped' ? '#6b7280' : '#D93025';
-        const badge = e.type === 'session'
-            ? `<span style="font-size:11px;font-weight:600;padding:2px 7px;border-radius:10px;background:rgba(25,103,210,0.12);color:#1967d2;">Session</span>`
-            : `<span style="font-size:11px;font-weight:600;padding:2px 7px;border-radius:10px;background:rgba(13,148,136,0.12);color:#0d9488;">Habit</span>`;
-        return `<div style="display:flex;gap:10px;padding:10px 12px;background:var(--bg-tertiary);border-radius:8px;border-left:3px solid ${stateColor};">
-            <div style="font-size:11px;font-weight:600;color:var(--text-secondary);min-width:44px;font-variant-numeric:tabular-nums;padding-top:2px;">${timeStr}</div>
+    const total = onTimeItems.length + lateItems.length + missedItems.length;
+    const summaryEl = document.getElementById('adherenceSummary');
+    if (summaryEl) {
+        summaryEl.innerHTML = `
+            <span style="color:#1E8E3E;font-weight:700;">${onTimeItems.length} On Time</span> &nbsp;
+            <span style="color:#f59e0b;font-weight:700;">${lateItems.length} Late</span> &nbsp;
+            <span style="color:#D93025;font-weight:700;">${missedItems.length} Missed</span>
+            <span style="color:var(--text-secondary);font-size:12px;"> (${total} total with scheduled time)</span>`;
+    }
+
+    const canvas = document.getElementById('adherenceChart');
+    if (canvas) {
+        if (window._adherenceChartInstance) { window._adherenceChartInstance.destroy(); window._adherenceChartInstance = null; }
+        if (total > 0) {
+            window._adherenceChartInstance = new Chart(canvas.getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['On Time', 'Late', 'Missed'],
+                    datasets: [{ data: [onTimeItems.length, lateItems.length, missedItems.length],
+                        backgroundColor: ['#1E8E3E','#f59e0b','#D93025'], borderWidth: 2, borderColor: 'var(--bg-primary)' }]
+                },
+                options: { responsive: true, maintainAspectRatio: true,
+                    plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 8, font: { size: 11 } } } } }
+            });
+        } else {
+            canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+        }
+    }
+
+    const listEl = document.getElementById('adherenceList');
+    if (!listEl) return;
+    const flagged = [...lateItems.map(i => ({...i, cat:'late'})), ...missedItems.map(i => ({...i, cat:'missed'}))];
+    if (flagged.length === 0) {
+        listEl.innerHTML = '<div style="color:var(--text-secondary);font-size:14px;">No late or missed habits in this period.</div>';
+        return;
+    }
+    listEl.innerHTML = flagged.map(e => {
+        const color = e.cat === 'late' ? '#f59e0b' : '#D93025';
+        const diffText = e.diff != null ? `${e.diff > 0 ? '+' : ''}${Math.round(e.diff)} min` : '';
+        return `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--bg-tertiary);border-radius:8px;border-left:3px solid ${color};">
             <div style="flex:1;min-width:0;">
-                <div style="display:flex;align-items:center;gap:6px;${e.note ? 'margin-bottom:4px;' : ''}">
-                    <span style="font-size:15px;">${e.icon}</span>
-                    ${badge}
-                    <span style="font-size:13px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(e.name)}</span>
-                    <span style="font-size:13px;font-weight:700;color:${stateColor};">${stateIcon}</span>
-                </div>
-                ${e.note ? `<div style="font-size:12px;color:var(--text-secondary);white-space:pre-wrap;line-height:1.45;">${escapeHtml(e.note)}</div>` : ''}
+                <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(e.name)}</div>
+                <div style="font-size:11px;color:var(--text-secondary);">Scheduled ${e.scheduled} · ${e.date}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0;">
+                <div style="font-size:12px;font-weight:600;color:${color};">${e.actual}</div>
+                ${diffText ? `<div style="font-size:11px;color:${color};">${diffText}</div>` : ''}
             </div>
         </div>`;
     }).join('');
@@ -6790,6 +6958,8 @@ function saveWeightAdjustments() {}
                     </div>
                 </div>
                 <div id="proj-schedule-panel-${p.id}" style="display:none; padding:12px 8px 14px; background:var(--bg-tertiary); border-bottom:1px solid var(--border-color); border-left:3px solid var(--accent-color);">
+                    <div id="proj-allocation-${p.id}" style="display:none; font-size:11px; color:var(--text-secondary); margin-bottom:8px; padding:5px 8px; background:var(--bg-secondary); border-radius:6px;"></div>
+                    <div id="proj-alloc-warn-${p.id}" style="display:none; font-size:12px; color:#D93025; margin-bottom:6px; padding:4px 8px; background:rgba(220,38,38,0.08); border-radius:6px; border-left:2px solid #D93025;"></div>
                     <div id="proj-sessions-chips-${p.id}" style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px;"></div>
                     <div id="reg-sess-days-${p.id}" style="display:flex; gap:5px; flex-wrap:wrap; margin-bottom:8px;">
                         ${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => `<button data-day="${d}" data-selected="0" onclick="toggleRegistryDayChip(this)" style="padding:4px 10px; font-size:12px; border:1px solid var(--border-color); border-radius:20px; cursor:pointer; background:var(--bg-secondary); color:var(--text-primary); font-weight:500;">${d}</button>`).join('')}
@@ -6811,11 +6981,34 @@ function saveWeightAdjustments() {}
             renderProjectRegistryTotal();
         }
 
+        function getProjectScheduledHours(p) {
+            return (p.scheduledSessions || []).reduce((total, s) => {
+                const [sh, sm] = s.startTime.split(':').map(Number);
+                const [eh, em] = s.endTime.split(':').map(Number);
+                return total + (eh * 60 + em - sh * 60 - sm) / 60;
+            }, 0);
+        }
+
+        function renderScheduleAllocation(id) {
+            const el = document.getElementById(`proj-allocation-${id}`);
+            if (!el) return;
+            const p = projects.find(x => x.id === id);
+            if (!p) return;
+            const planned = p.weeklyTargetHours || 0;
+            const scheduled = getProjectScheduledHours(p);
+            if (!planned) { el.style.display = 'none'; return; }
+            const remaining = planned - scheduled;
+            const remColor = remaining < 0 ? '#D93025' : remaining === 0 ? '#f59e0b' : 'var(--text-secondary)';
+            el.style.display = '';
+            el.innerHTML = `Planned: <b>${planned}h/wk</b> &nbsp;|&nbsp; Scheduled: <b>${scheduled.toFixed(1)}h</b> &nbsp;|&nbsp; <span style="color:${remColor}">Remaining: <b>${remaining.toFixed(1)}h</b></span>`;
+        }
+
         function toggleSchedulePanel(id) {
             const panel = document.getElementById(`proj-schedule-panel-${id}`);
             if (!panel) return;
             const open = panel.style.display !== 'none';
             panel.style.display = open ? 'none' : 'block';
+            if (!open) renderScheduleAllocation(id);
         }
 
         function renderRegistrySessions(id) {
@@ -6824,6 +7017,7 @@ function saveWeightAdjustments() {}
             const p = projects.find(x => x.id === id);
             if (!p || !(p.scheduledSessions || []).length) {
                 el.innerHTML = '<span style="font-size:12px; color:var(--text-secondary);">No sessions yet.</span>';
+                renderScheduleAllocation(id);
                 return;
             }
             el.innerHTML = p.scheduledSessions.map((s, i) => {
@@ -6831,6 +7025,7 @@ function saveWeightAdjustments() {}
                 const label = `${s.day} ${s.startTime}–${s.endTime}` + (blocks > 1 ? ` (${blocks})` : '');
                 return `<span style="display:inline-flex; align-items:center; gap:5px; padding:3px 10px; background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:20px; font-size:12px;">${label}<button onclick="removeRegistrySession(${id},${i})" style="background:none; border:none; color:var(--text-secondary); cursor:pointer; font-size:14px; padding:0; line-height:1;">×</button></span>`;
             }).join('');
+            renderScheduleAllocation(id);
         }
 
         function toggleRegistryDayChip(btn) {
@@ -6854,6 +7049,19 @@ function saveWeightAdjustments() {}
             const p = projects.find(x => x.id === id);
             if (!p) return;
             if (!p.scheduledSessions) p.scheduledSessions = [];
+            const [sh, sm] = startTime.split(':').map(Number);
+            const [eh, em] = endTime.split(':').map(Number);
+            const addedHours = selectedDays.length * (eh * 60 + em - sh * 60 - sm) / 60;
+            const willSchedule = getProjectScheduledHours(p) + addedHours;
+            if (p.weeklyTargetHours && willSchedule > p.weeklyTargetHours) {
+                const overBy = (willSchedule - p.weeklyTargetHours).toFixed(1);
+                const warnEl = document.getElementById(`proj-alloc-warn-${id}`);
+                if (warnEl) {
+                    warnEl.textContent = `⚠️ Exceeds planned ${p.weeklyTargetHours}h/wk by ${overBy}h`;
+                    warnEl.style.display = '';
+                    setTimeout(() => { warnEl.style.display = 'none'; }, 5000);
+                }
+            }
             selectedDays.forEach(day => p.scheduledSessions.push({ day, startTime, endTime }));
             saveProjects();
             renderRegistrySessions(id);
