@@ -3268,6 +3268,12 @@
         overflow-y: auto;
         padding-bottom: max(env(safe-area-inset-bottom, 0px), 16px);
     }
+    /* When the minimised session bar (54px at bottom:64px) is visible,
+       lift every bottom-sheet off the bar so buttons stay tappable.
+       122px = 64px (mobile nav) + 54px (session bar) + 4px gap */
+    body.session-active .modal.active {
+        padding-bottom: 122px !important;
+    }
 
     /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
        Today tab
