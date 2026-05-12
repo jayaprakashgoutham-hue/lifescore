@@ -2573,31 +2573,39 @@ function renderWeeklyProjectProgress() {
                 });
                 daySessions.sort((a, b) => (a.block.startTime || '').localeCompare(b.block.startTime || ''));
 
-                const habitsHtml = dayHabits.map(h => {
+                // Build unified item list with a sort key ('ZZ' for no-time items so they sink to bottom)
+                const allItems = [];
+                dayHabits.forEach(h => {
                     const log = habitLogs[h.id]?.[dateStr];
                     const state = getHabitLogState(log);
                     const si = state === 'done' ? '✓' : state === 'failed' ? '✗' : state === 'skipped' ? '—' : '';
                     const dim = (state === 'done' || state === 'skipped' || state === 'failed') ? 'opacity:0.55;' : '';
-                    return `<div class="wt-item wt-item--habit" style="${dim}">
-                        <span>${h.icon || '🎯'}</span>
-                        <span class="wt-name">${escapeHtml(h.name)}${si ? ` <b>${si}</b>` : ''}</span>
-                        ${h.reminderTime ? `<span class="wt-time">${h.reminderTime}</span>` : ''}
-                    </div>`;
-                }).join('');
+                    allItems.push({
+                        sortKey: h.reminderTime || 'ZZ',
+                        html: `<div class="wt-item wt-item--habit" style="${dim}">
+                            <span>${h.icon || '🎯'}</span>
+                            <span class="wt-name">${escapeHtml(h.name)}${si ? ` <b>${si}</b>` : ''}</span>
+                            ${h.reminderTime ? `<span class="wt-time">${h.reminderTime}</span>` : ''}
+                        </div>`
+                    });
+                });
+                daySessions.forEach(({ project: p, block, isMoved, originalDay, sessStart, sessEnd }) => {
+                    allItems.push({
+                        sortKey: block.startTime,
+                        html: `<div class="wt-item wt-item--session">
+                            <span>${p.icon || '📁'}</span>
+                            <span class="wt-name">${escapeHtml(p.name)}${isMoved ? ' <span class="wt-moved">↗</span>' : ''}</span>
+                            <span class="wt-time">${block.startTime}–${block.endTime}</span>
+                            <button class="wt-move-btn" onclick="openMoveSessionPicker(${p.id},'${originalDay}','${sessStart}','${sessEnd}')" title="Move">→</button>
+                        </div>`
+                    });
+                });
+                allItems.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
 
-                const sessHtml = daySessions.map(({ project: p, block, isMoved, originalDay, sessStart, sessEnd }) =>
-                    `<div class="wt-item wt-item--session">
-                        <span>${p.icon || '📁'}</span>
-                        <span class="wt-name">${escapeHtml(p.name)}${isMoved ? ' <span class="wt-moved">↗</span>' : ''}</span>
-                        <span class="wt-time">${block.startTime}–${block.endTime}</span>
-                        <button class="wt-move-btn" onclick="openMoveSessionPicker(${p.id},'${originalDay}','${sessStart}','${sessEnd}')" title="Move">→</button>
-                    </div>`
-                ).join('');
-
-                const empty = !dayHabits.length && !daySessions.length ? `<div class="wt-empty">Free</div>` : '';
+                const bodyHtml = allItems.length ? allItems.map(i => i.html).join('') : `<div class="wt-empty">Free</div>`;
                 return `<div class="wt-col${isToday ? ' wt-today' : ''}${isPast ? ' wt-past' : ''}">
                     <div class="wt-header"><div class="wt-abbr">${abbr}</div><div class="wt-daynum">${dayNum}</div></div>
-                    <div class="wt-body">${habitsHtml}${daySessions.length ? `<hr class="wt-hr">${sessHtml}` : ''}${empty}</div>
+                    <div class="wt-body">${bodyHtml}</div>
                 </div>`;
             }).join('');
 
