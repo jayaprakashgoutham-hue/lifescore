@@ -861,6 +861,7 @@ function refreshTotalXPDisplay() {
             const projectId = selectEl && selectEl.value ? parseInt(selectEl.value) : _logMissedProjectId;
             const project = projects.find(p => p.id === projectId);
             if (!project) return;
+            const focusQuality = parseFloat(document.getElementById('logMissedFocusQuality')?.value || '0.8');
             const [sh, sm] = _logMissedStart.split(':').map(Number);
             const todayStr = getLocalDateStr(new Date(), true);
             const startTs = new Date(todayStr + 'T00:00:00').getTime() + (sh * 60 + sm) * 60000;
@@ -872,7 +873,8 @@ function refreshTotalXPDisplay() {
                 duration: workedMin, startTime: startTs, endTime: endTs,
                 stopwatch: false, activeTasks: [], tasksCompleted: [],
                 notes: noteEl?.value.trim() || '',
-                completed: true, interrupted: false, source: 'manual'
+                completed: true, interrupted: false, source: 'manual',
+                focusQuality, xpMultiplier: focusQuality
             };
             if (settings.gamificationEnabled) {
                 const rtid = `session_${session.id}`;
@@ -1103,6 +1105,7 @@ function savePastSession() {
     const endTime = startTime + (duration * 60 * 1000);
     const dateStr = getLocalDateStr(new Date(startTime), true);
     
+    const focusQuality = parseFloat(document.getElementById('pastSessionFocusQuality')?.value || '0.8');
     const session = {
         id: startTime,
         date: dateStr,
@@ -1115,9 +1118,10 @@ function savePastSession() {
         tasksCompleted: [],
         notes: notes,
         completed: true,
-        interrupted: null
+        interrupted: null,
+        focusQuality, xpMultiplier: focusQuality
     };
-    
+
     sessionLogs.push(session);
     saveSessionLogs();
     closeLogPastSessionModal();
@@ -1389,11 +1393,13 @@ function toggleActiveSessionMinimize() {
 
     if (!activeSession) {
         container.style.display = 'none';
+        document.body.classList.remove('session-active');
         const popup = document.getElementById('sessionEndPopup');
         if (popup) popup.classList.remove('active');
         return;
     }
 
+    document.body.classList.add('session-active');
     container.style.display = 'block';
     projectEl.textContent = activeSession.projectName;
     const blockEl = document.getElementById('activeSessionScheduledBlock');
@@ -1552,6 +1558,7 @@ function toggleActiveSessionMinimize() {
     const xp = Math.round(workedMin * 0.25 * multiplier * 10) / 10;
 
     activeSession.xpMultiplier = multiplier;
+    activeSession.focusQuality = multiplier;
 
     finalizeActiveSession({
         completed: pendingSessionEndMode !== 'early',
@@ -2216,10 +2223,23 @@ function renderWeeklyProjectProgress() {
             }
 
             const activeScheduled = scheduledItems.filter(i => !isItemActedOn(i));
-            const completedFromScheduled = scheduledItems.filter(i => isItemActedOn(i));
             const activeUnscheduled = unscheduledItems.filter(i => !isItemActedOn(i));
-            const completedFromUnscheduled = unscheduledItems.filter(i => isItemActedOn(i));
-            const completedItems = [...completedFromScheduled, ...completedFromUnscheduled];
+
+            // Enrich completed session items with their matching session log (for focusQuality display)
+            function enrichCompleted(items) {
+                return items.filter(i => isItemActedOn(i)).map(item => {
+                    if (item.type !== 'session') return item;
+                    const s = item.session;
+                    const matchedLog = sessionLogs.find(sl => {
+                        if (!sl.completed || !sl.startTime) return false;
+                        if (getLocalDateStr(new Date(sl.startTime), true) !== dateStr) return false;
+                        const sStartMins = new Date(sl.startTime).getHours() * 60 + new Date(sl.startTime).getMinutes();
+                        return sStartMins >= timeToMin(s.startTime) && sStartMins < timeToMin(s.endTime);
+                    });
+                    return { ...item, _focusQuality: matchedLog?.focusQuality };
+                });
+            }
+            const completedItems = [...enrichCompleted(scheduledItems), ...enrichCompleted(unscheduledItems)];
 
             // Compute break blocks for gaps within wake-sleep window
             const breakBlocks = [];
@@ -2273,11 +2293,8 @@ function renderWeeklyProjectProgress() {
             // Active scheduled items (with breaks interleaved)
             scheduledWithBreaks.forEach(item => { html += renderTimelineItem(item, dateStr); });
 
-            // Active unscheduled section
-            if (activeUnscheduled.length > 0) {
-                html += `<div class="timeline-section-label">No Time Set</div>`;
-                activeUnscheduled.forEach(item => { html += renderTimelineItem(item, dateStr); });
-            }
+            // Active unscheduled items (no section label — merged into the main flow)
+            activeUnscheduled.forEach(item => { html += renderTimelineItem(item, dateStr); });
 
             // Completed section
             if (completedItems.length > 0) {
@@ -2347,7 +2364,8 @@ function renderWeeklyProjectProgress() {
                 const sessStart = item.sessStartTime || s.startTime;
                 const sessEnd = item.sessEndTime || s.endTime;
                 const movedBadge = item.isMoved ? `<span class="session-moved-badge">↗ Moved</span>` : '';
-                const metaLabel = item.isOneOff ? 'one-off' : (item.isMoved ? `moved from ${origDay}` : 'scheduled');
+                const focusSuffix = item._focusQuality != null ? ` · Focus: ${item._focusQuality}×` : '';
+                const metaLabel = (item.isOneOff ? 'one-off' : (item.isMoved ? `moved from ${origDay}` : 'scheduled')) + focusSuffix;
                 const moveBtn = item.isOneOff ? '' : `<button onclick="event.stopPropagation(); openMoveSessionPicker(${p.id},'${origDay || item.session.startTime}','${sessStart}','${sessEnd}')" style="background:none;border:none;font-size:11px;color:var(--accent-color);cursor:pointer;padding:0;white-space:nowrap;">→ Move</button>`;
                 return `<div class="timeline-item timeline-item--session" style="cursor:default;" data-time="${s.startTime}" data-date="${dateStr}" data-project-id="${p.id}">
                     <div class="timeline-time">${s.startTime}–${s.endTime}</div>
@@ -5874,11 +5892,13 @@ dateLabels.push(labelDate.toLocaleDateString('en-US', { month: 'short', day: 'nu
     const projectStats = {};
     sessionsInRange.forEach(session => {
         if (!projectStats[session.projectName]) {
-            projectStats[session.projectName] = { count: 0, minutes: 0 };
+            projectStats[session.projectName] = { count: 0, minutes: 0, focusSum: 0, focusCount: 0 };
         }
-        projectStats[session.projectName].count++;
+        const stats = projectStats[session.projectName];
+        stats.count++;
         const workedMin = Math.round((session.endTime - session.startTime) / 60000);
-        projectStats[session.projectName].minutes += workedMin;
+        stats.minutes += workedMin;
+        if (session.focusQuality != null) { stats.focusSum += session.focusQuality; stats.focusCount++; }
     });
     
     // Pie chart - hours by project
@@ -5926,10 +5946,12 @@ dateLabels.push(labelDate.toLocaleDateString('en-US', { month: 'short', day: 'nu
         .sort((a, b) => b[1].minutes - a[1].minutes)
         .map(([name, stats]) => {
             const hours = (stats.minutes / 60).toFixed(1);
+            const avgFocus = stats.focusCount > 0 ? (stats.focusSum / stats.focusCount).toFixed(2) : null;
+            const focusLabel = avgFocus ? ` · Focus: ${avgFocus}×` : '';
             return `
             <div style="display: flex; justify-content: space-between; padding: 8px 12px; background: var(--bg-tertiary); border-radius: 6px;">
                 <span>${escapeHtml(name)}</span>
-                <span style="color: var(--text-secondary);">${stats.count} sessions • ${hours}h</span>
+                <span style="color: var(--text-secondary);">${stats.count} sessions • ${hours}h${focusLabel}</span>
             </div>
         `}).join('');
     
