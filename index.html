@@ -1163,7 +1163,6 @@
             <div class="modal-header" id="sessionDetailTitle">Session Details</div>
             
             <div style="display: grid; gap: 12px; margin-bottom: 16px;">
-                <div><strong>Project:</strong> <span id="sessionDetailProject"></span></div>
                 <div><strong>Duration:</strong> <span id="sessionDetailDuration"></span></div>
                 <div><strong>Time:</strong> <span id="sessionDetailTime"></span></div>
                 <div><strong>XP Earned:</strong> <span id="sessionDetailPoints"></span></div>
@@ -1191,9 +1190,6 @@
 <div class="modal" id="editSessionModal">
         <div class="modal-content" style="max-width: 520px;">
             <div class="modal-header">✏️ Edit Session</div>
-
-            <label class="modal-label required">Project</label>
-            <select class="modal-select" id="editSessionProjectSelect"></select>
 
             <label class="modal-label required">Duration (minutes)</label>
             <input type="number" class="modal-input" id="editSessionDuration" min="1" placeholder="e.g., 60">

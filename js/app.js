@@ -933,8 +933,7 @@ function viewSessionDetails(sessionId) {
     
     const xp = calcSessionXP(session).toFixed(1);
 
-    document.getElementById('sessionDetailTitle').textContent = session.projectName || 'Session';
-    document.getElementById('sessionDetailProject').textContent = session.projectName || 'Unknown';
+    document.getElementById('sessionDetailTitle').textContent = session.notes || session.projectName || 'Focus Session';
     document.getElementById('sessionDetailDuration').textContent = `${workedMin} minutes (${session.duration}m planned)`;
     document.getElementById('sessionDetailTime').textContent = `${startTime} - ${endTime}`;
     document.getElementById('sessionDetailPoints').textContent = `${xp} XP`;
@@ -960,15 +959,11 @@ function closeSessionDetailModal() {
 }
 function openEditSessionModal() {
     if (!currentEditingSessionId) return;
-    
+
     const session = sessionLogs.find(s => s.id === currentEditingSessionId);
     if (!session) return;
-    
+
     const modal = document.getElementById('editSessionModal');
-    const projectSelect = document.getElementById('editSessionProjectSelect');
-    
-    projectSelect.innerHTML = '<option value="">Select Project...</option>' +
-        projects.map(p => `<option value="${p.id}" ${p.id === session.projectId ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('');
     
     // Pre-fill with current session data
     const workedMin = Math.round((session.endTime - session.startTime) / 60000);
@@ -987,16 +982,11 @@ function closeEditSessionModal() {
 
 function saveEditedSession() {
     if (!currentEditingSessionId) return;
-    
-    const projectId = parseInt(document.getElementById('editSessionProjectSelect').value);
+
     const duration = parseInt(document.getElementById('editSessionDuration').value);
     const startTimeStr = document.getElementById('editSessionStartTime').value;
     const notes = document.getElementById('editSessionNotes').value.trim();
-    
-    if (!projectId) {
-        alert('Please select a project.');
-        return;
-    }
+
     if (!duration || duration < 1) {
         alert('Please enter a valid duration.');
         return;
@@ -1005,23 +995,15 @@ function saveEditedSession() {
         alert('Please select a start time.');
         return;
     }
-    
-    const project = projects.find(p => p.id === projectId);
-    if (!project) {
-        alert('Selected project not found.');
-        return;
-    }
-    
+
     const session = sessionLogs.find(s => s.id === currentEditingSessionId);
     if (!session) return;
-    
+
     const startTime = new Date(startTimeStr).getTime();
     const endTime = startTime + (duration * 60 * 1000);
     const dateStr = getLocalDateStr(new Date(startTime), true);
-    
-    // Update session
-    session.projectId = project.id;
-    session.projectName = project.name;
+
+    session.projectName = notes || session.projectName || 'Focus Session';
     session.startTime = startTime;
     session.endTime = endTime;
     session.date = dateStr;
@@ -1102,23 +1084,7 @@ function savePastSession() {
         return;
     }
 
-    const projectSelect = document.getElementById('sessionProjectSelect');
-    const projectId = parseInt(projectSelect.value);
-    if (!projectId) {
-        alert('Please choose a project.');
-        return;
-    }
-
-    const project = projects.find(p => p.id === projectId);
-    if (!project) {
-        alert('Selected project not found.');
-        return;
-    }
-
-    const activeTasks = tasks
-        .filter(task => task.project === projectId)
-        .map(task => task.id);
-
+    const label = (document.getElementById('sessionLabelInput')?.value || '').trim();
     const start = Date.now();
     const isStopwatch = selectedSessionDuration === 0;
     const end = isStopwatch ? null : start + (selectedSessionDuration * 60 * 1000);
@@ -1127,15 +1093,15 @@ function savePastSession() {
     const session = {
         id: start,
         date: dateStr,
-        projectId: project.id,
-        projectName: project.name,
+        projectId: null,
+        projectName: label || 'Focus Session',
         duration: selectedSessionDuration,
         startTime: start,
         endTime: end,
         stopwatch: isStopwatch,
-        activeTasks: activeTasks,
+        activeTasks: [],
         tasksCompleted: [],
-        notes: '',
+        notes: label,
         completed: false,
         interrupted: null
     };
@@ -1366,7 +1332,8 @@ function toggleActiveSessionMinimize() {
 
     document.body.classList.add('session-active');
     container.style.display = 'block';
-    projectEl.textContent = activeSession.projectName;
+    const sessionLabel = activeSession.notes || activeSession.projectName || 'Focus Session';
+    projectEl.textContent = sessionLabel;
     const blockEl = document.getElementById('activeSessionScheduledBlock');
     if (blockEl) {
         if (activeSession._scheduledBlock) { blockEl.textContent = '📅 ' + activeSession._scheduledBlock; blockEl.style.display = ''; }
@@ -1378,7 +1345,7 @@ function toggleActiveSessionMinimize() {
         else msgEl.style.display = 'none';
     }
     const mobileHandleName = document.getElementById('mobileHandleName');
-    if (mobileHandleName) mobileHandleName.textContent = activeSession.projectName;
+    if (mobileHandleName) mobileHandleName.textContent = sessionLabel;
     const buddyEl = document.getElementById('activeSessionBuddy');
     if (buddyEl) {
         const d = activeSession.duration;
@@ -1387,11 +1354,8 @@ function toggleActiveSessionMinimize() {
         buddyEl.onerror = () => { buddyEl.style.display = 'none'; };
         buddyEl.alt = img;
     }
-    const project = projects.find(p => p.id === activeSession.projectId);
     const toolsEl = document.getElementById('activeSessionTools');
-    if (toolsEl && project && (project.tools || []).length > 0) {
-        toolsEl.innerHTML = project.tools.map(tid => { const t = tools.find(x => x.id === tid); return t ? '<span style="padding:2px 8px; background:var(--bg-tertiary); border-radius:12px; font-size:11px;">' + t.icon + ' ' + escapeHtml(t.name) + '</span>' : ''; }).join('');
-    } else if (toolsEl) { toolsEl.innerHTML = ''; }
+    if (toolsEl) { toolsEl.innerHTML = ''; }
     notesEl.value = activeSession.notes || '';
     if (!Array.isArray(activeSession.activeTasks)) activeSession.activeTasks = [];
     if (activeSession.stopwatch) {
@@ -1404,7 +1368,6 @@ function toggleActiveSessionMinimize() {
         function showSessionEndPopup() {
     if (!activeSession) return;
     const popup = document.getElementById('sessionEndPopup');
-    const projectEl = document.getElementById('sessionEndProjectName');
     const durationEl = document.getElementById('sessionEndDuration');
     const tasksEl = document.getElementById('sessionEndTasksCount');
     const notesEl = document.getElementById('sessionEndNotesInput');
@@ -1413,7 +1376,6 @@ function toggleActiveSessionMinimize() {
     const minutes = Math.floor(actualMs / 60000);
     const seconds = Math.floor((actualMs % 60000) / 1000);
 
-    if (projectEl) projectEl.textContent = activeSession.projectName || '-';
     if (durationEl) durationEl.textContent = `${minutes}m ${String(seconds).padStart(2, '0')}s`;
     if (tasksEl) tasksEl.textContent = String((activeSession.tasksCompleted || []).length);
     if (notesEl) notesEl.value = activeSession.notes || '';
@@ -1421,9 +1383,7 @@ function toggleActiveSessionMinimize() {
     playSessionEndSound();
     if (window.sessionAlarmInterval) clearInterval(window.sessionAlarmInterval);
     window.sessionAlarmInterval = setInterval(playSessionEndSound, 4000);
-    // Populate tools — pre-select project tools
-    const project = projects.find(p => p.id === activeSession.projectId);
-    sessionSelectedToolIds = new Set((project?.tools || []).filter(id => tools.find(t => t.id === id)));
+    sessionSelectedToolIds = new Set();
     renderSessionEndTools();
 
     if (popup) popup.classList.add('active');
@@ -1896,72 +1856,7 @@ function getWeeklyHoursPerProject() {
 
 function renderWeeklyProjectProgress() {
     const el = document.getElementById('weeklyProjectProgress');
-    if (!el) return;
-
-    const targetProjects = projects.filter(p => p.weeklyTargetHours > 0);
-    if (targetProjects.length === 0) {
-        el.style.display = 'none';
-        return;
-    }
-    el.style.display = 'block';
-
-    const { weekStart, weekEnd } = getWeekBoundaryWithOffset(_projProgressWeekOffset);
-    const weekStartTs = weekStart.getTime();
-    const weekEndTs = weekEnd.getTime();
-
-    const hoursMap = {};
-    sessionLogs.forEach(s => {
-        if (!s.completed || !s.startTime) return;
-        if (s.startTime < weekStartTs || s.startTime > weekEndTs) return;
-        const hrs = (s.endTime - s.startTime) / 3600000;
-        hoursMap[s.projectId] = (hoursMap[s.projectId] || 0) + hrs;
-    });
-
-    const fmt = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    const weekLabel = `${fmt(weekStart)} – ${fmt(weekEnd)}, ${weekEnd.getFullYear()}`;
-    const isCurrentWeek = _projProgressWeekOffset >= 0;
-
-    let totalLogged = 0, totalTarget = 0;
-
-    const rows = targetProjects.map(p => {
-        const logged = hoursMap[p.id] || 0;
-        const target = p.weeklyTargetHours;
-        const pct = target > 0 ? Math.min(Math.round((logged / target) * 100), 999) : 0;
-        const barPct = target > 0 ? Math.min((logged / target) * 100, 100) : 0;
-        const color = pct >= 80 ? '#16a34a' : pct >= 40 ? '#d97706' : '#dc2626';
-        const loggedStr = logged.toFixed(1);
-        const targetStr = target % 1 === 0 ? String(target) : target.toFixed(1);
-        totalLogged += logged;
-        totalTarget += target;
-        return `<div style="margin-bottom:14px;">
-            <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;">
-                <span style="font-size:13px;font-weight:600;">${escapeHtml(p.name)}</span>
-                <span style="font-size:12px;color:var(--text-secondary);">${loggedStr}h / ${targetStr}h &nbsp;<b style="color:${color};">${pct}%</b></span>
-            </div>
-            <div style="background:var(--bg-tertiary);border-radius:6px;height:10px;overflow:hidden;border:1px solid var(--border-color);">
-                <div style="height:100%;width:${barPct.toFixed(1)}%;background:${color};border-radius:6px;transition:width 0.4s;min-width:${pct > 0 ? '4px' : '0'};"></div>
-            </div>
-        </div>`;
-    }).join('');
-
-    const totalPct = totalTarget > 0 ? Math.min(Math.round((totalLogged / totalTarget) * 100), 999) : 0;
-    const totalColor = totalPct >= 80 ? '#16a34a' : totalPct >= 40 ? '#d97706' : '#dc2626';
-    const totalTargetStr = totalTarget % 1 === 0 ? String(totalTarget) : totalTarget.toFixed(1);
-
-    el.innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:6px;">
-            <span style="font-weight:700;font-size:15px;">📊 Project Hours Progress</span>
-            <div style="display:flex;gap:6px;align-items:center;">
-                <button class="btn-secondary" style="padding:4px 12px;font-size:15px;line-height:1;" onclick="_projProgressWeekOffset--;renderWeeklyProjectProgress()">‹</button>
-                <span style="font-size:12px;color:var(--text-secondary);white-space:nowrap;">${weekLabel}</span>
-                <button class="btn-secondary" style="padding:4px 12px;font-size:15px;line-height:1;" onclick="if(_projProgressWeekOffset<0){_projProgressWeekOffset++;renderWeeklyProjectProgress();}" ${isCurrentWeek ? 'disabled style="opacity:0.4;cursor:default;"' : ''}>›</button>
-            </div>
-        </div>
-        ${rows}
-        <div style="padding-top:10px;border-top:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px;">
-            <span style="font-size:13px;font-weight:600;color:var(--text-primary);">Total</span>
-            <span style="font-size:13px;color:var(--text-secondary);">${totalLogged.toFixed(1)}h / ${totalTargetStr}h this week &nbsp;<b style="color:${totalColor};">${totalPct}%</b></span>
-        </div>`;
+    if (el) el.style.display = 'none';
 }
 
        function renderTodayView() {
@@ -2201,7 +2096,7 @@ function renderWeeklyProjectProgress() {
                         const sStartMins = new Date(sl.startTime).getHours() * 60 + new Date(sl.startTime).getMinutes();
                         return sStartMins >= timeToMin(s.startTime) && sStartMins < timeToMin(s.endTime);
                     });
-                    return { ...item, _focusQuality: matchedLog?.focusQuality };
+                    return { ...item, _focusQuality: matchedLog?.focusQuality, _isMissed: matchedLog?.source === 'manual' };
                 });
             }
             const completedItems = [...enrichCompleted(scheduledItems), ...enrichCompleted(unscheduledItems)];
@@ -2330,13 +2225,16 @@ function renderWeeklyProjectProgress() {
                 const sessEnd = item.sessEndTime || s.endTime;
                 const movedBadge = item.isMoved ? `<span class="session-moved-badge">↗ Moved</span>` : '';
                 const focusSuffix = item._focusQuality != null ? ` · Focus: ${item._focusQuality}×` : '';
-                const metaLabel = (item.isOneOff ? 'one-off' : (item.isMoved ? `moved from ${origDay}` : 'scheduled')) + focusSuffix;
+                const isActedOn = isItemActedOn(item);
+                const baseLabel = item.isOneOff ? 'one-off' : (item.isMoved ? `moved from ${origDay}` : 'scheduled');
+                const actedLabel = item._isMissed ? '✗ Logged missed' : '✓ Completed';
+                const metaLabel = (isActedOn ? actedLabel : baseLabel) + focusSuffix;
                 const moveBtn = item.isOneOff ? '' : `<button onclick="event.stopPropagation(); openMoveSessionPicker(${p.id},'${origDay || item.session.startTime}','${sessStart}','${sessEnd}')" style="background:none;border:none;font-size:11px;color:var(--accent-color);cursor:pointer;padding:0;white-space:nowrap;">→ Move</button>`;
                 return `<div class="timeline-item timeline-item--session" style="cursor:default;" data-time="${s.startTime}" data-date="${dateStr}" data-project-id="${p.id}">
                     <div class="timeline-time">${s.startTime}–${s.endTime}</div>
-                    <div class="timeline-icon" style="color:${p.color || 'var(--accent-color)'};">${p.icon || '📁'}</div>
+                    <div class="timeline-icon" style="color:var(--accent-color);">⏱</div>
                     <div class="timeline-body">
-                        <div class="timeline-name">${escapeHtml(p.name)} ${movedBadge}</div>
+                        <div class="timeline-name">Focus Hour ${movedBadge}</div>
                         <div class="timeline-meta">${metaLabel}</div>
                     </div>
                     <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;flex-shrink:0;">
@@ -2397,10 +2295,6 @@ function renderWeeklyProjectProgress() {
 
         function openStartSessionModalWithProject(projectId) {
             openStartSessionModal();
-            setTimeout(() => {
-                const sel = document.getElementById('sessionProjectSelect');
-                if (sel) sel.value = projectId;
-            }, 50);
         }
 
         const FOCUS_MESSAGES = [
@@ -2412,10 +2306,27 @@ function renderWeeklyProjectProgress() {
             "The quality of your focus shapes the quality of your results"
         ];
 
+        let _focusSessionStartData = null;
+
         function startTimedSessionDirect(projectId, startTimeStr, endTimeStr) {
             if (activeSession) { alert('A session is already active. Please complete it first.'); return; }
-            const project = projects.find(p => p.id === projectId);
-            if (!project) return;
+            openFocusSessionStart(projectId, startTimeStr, endTimeStr);
+        }
+
+        function openFocusSessionStart(projectId, startTimeStr, endTimeStr) {
+            _focusSessionStartData = { projectId, startTimeStr, endTimeStr };
+            const input = document.getElementById('focusSessionLabelInput');
+            if (input) input.value = '';
+            const timeInfo = document.getElementById('focusSessionTimeInfo');
+            if (timeInfo) timeInfo.textContent = `${startTimeStr}–${endTimeStr}`;
+            document.getElementById('focusSessionStartModal').classList.add('active');
+        }
+
+        function startFocusSessionFromModal() {
+            if (!_focusSessionStartData) return;
+            const { projectId, startTimeStr, endTimeStr } = _focusSessionStartData;
+            const label = (document.getElementById('focusSessionLabelInput')?.value || '').trim();
+            document.getElementById('focusSessionStartModal').classList.remove('active');
             const [sh, sm] = startTimeStr.split(':').map(Number);
             const [eh, em] = endTimeStr.split(':').map(Number);
             const durationMinutes = (eh * 60 + em) - (sh * 60 + sm);
@@ -2424,11 +2335,11 @@ function renderWeeklyProjectProgress() {
             const dateStr = getLocalDateStr(new Date(start), true);
             const session = {
                 id: start, date: dateStr,
-                projectId: project.id, projectName: project.name,
+                projectId: projectId, projectName: label || 'Focus Session',
                 duration: durationMinutes,
                 startTime: start, endTime: end, stopwatch: false,
                 activeTasks: tasks.filter(t => t.project === projectId).map(t => t.id),
-                tasksCompleted: [], notes: '',
+                tasksCompleted: [], notes: label,
                 completed: false, interrupted: null,
                 _scheduledBlock: `${startTimeStr}–${endTimeStr}`,
                 _focusMsg: FOCUS_MESSAGES[Math.floor(Math.random() * FOCUS_MESSAGES.length)]
@@ -2436,6 +2347,7 @@ function renderWeeklyProjectProgress() {
             sessionLogs.push(session);
             saveSessionLogs();
             activeSession = session;
+            _focusSessionStartData = null;
             switchTab('today');
             renderActiveSessionView();
             startSessionTimer();
@@ -3936,7 +3848,6 @@ function fabAction(type) {
     document.getElementById('fabAddMenu').style.display = 'none';
     if (type === 'session') openStartSessionModal();
     else if (type === 'habit') showAddHabitModal();
-    else if (type === 'projects') openProjectRegistry();
 }
 
 const _sectionCollapsed = JSON.parse(localStorage.getItem('lifescore_section_collapsed') || '{"projects":true,"tasks":true,"notes":true}');
@@ -5861,61 +5772,21 @@ dateLabels.push(labelDate.toLocaleDateString('en-US', { month: 'short', day: 'nu
         }
     });
     
-    // By project breakdown
-    const projectStats = {};
+    // By label breakdown
+    const labelStats = {};
     sessionsInRange.forEach(session => {
-        if (!projectStats[session.projectName]) {
-            projectStats[session.projectName] = { count: 0, minutes: 0, focusSum: 0, focusCount: 0 };
+        const label = (session.notes && session.notes.trim()) ? session.notes.trim() : (session.projectName || 'Focus Session');
+        if (!labelStats[label]) {
+            labelStats[label] = { count: 0, minutes: 0, focusSum: 0, focusCount: 0 };
         }
-        const stats = projectStats[session.projectName];
+        const stats = labelStats[label];
         stats.count++;
         const workedMin = Math.round((session.endTime - session.startTime) / 60000);
         stats.minutes += workedMin;
         if (session.focusQuality != null) { stats.focusSum += session.focusQuality; stats.focusCount++; }
     });
-    
-    // Pie chart - hours by project
-    const pieCanvas = document.getElementById('sessionAnalyticsPieChart');
-    if (pieCanvas) {
-        if (window.sessionPieChartInstance) window.sessionPieChartInstance.destroy();
-        const projectNames = Object.keys(projectStats);
-        const projectHours = projectNames.map(n => +(projectStats[n].minutes / 60).toFixed(1));
-        const pieColors = ['#1967d2', '#e8710a', '#0d9488', '#7c3aed', '#db2777', '#ca8a04', '#059669', '#6366f1'];
-        window.sessionPieChartInstance = new Chart(pieCanvas.getContext('2d'), {
-            type: 'doughnut',
-            data: {
-                labels: projectNames,
-                datasets: [{
-                    data: projectHours,
-                    backgroundColor: pieColors.slice(0, projectNames.length),
-                    borderWidth: 2,
-                    borderColor: 'var(--bg-primary)'
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: true,
-                plugins: {
-                    legend: { position: 'bottom', labels: { boxWidth: 12, padding: 8, font: { size: 11 } } },
-                    tooltip: {
-                        callbacks: {
-                            label: function(ctx) {
-                                const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
-                                const pct = total > 0 ? Math.round(ctx.parsed / total * 100) : 0;
-                                return `${ctx.label}: ${ctx.parsed}h (${pct}%)`;
-                            }
-                        }
-                    }
-                }
-            }
-        });
-    }
-    
-    // Build project list HTML using already-computed projectStats
-    const _existingStats = true;
-    
-    
-    const projectList = Object.entries(projectStats)
+
+    const labelList = Object.entries(labelStats)
         .sort((a, b) => b[1].minutes - a[1].minutes)
         .map(([name, stats]) => {
             const hours = (stats.minutes / 60).toFixed(1);
@@ -5927,8 +5798,8 @@ dateLabels.push(labelDate.toLocaleDateString('en-US', { month: 'short', day: 'nu
                 <span style="color: var(--text-secondary);">${stats.count} sessions • ${hours}h${focusLabel}</span>
             </div>
         `}).join('');
-    
-    document.getElementById('sessionAnalyticsByProject').innerHTML = projectList || '<div style="color: var(--text-secondary); font-size: 14px;">No sessions recorded</div>';
+
+    document.getElementById('sessionAnalyticsByProject').innerHTML = labelList || '<div style="color: var(--text-secondary); font-size: 14px;">No sessions recorded</div>';
 
     renderNotesLog(startDate, endDate);
 }
