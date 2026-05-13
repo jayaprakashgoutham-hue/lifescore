@@ -31,6 +31,9 @@
 };
         let dailySessionOverrides = {};
         let weekOverrides = {};
+        let focusHourSchedule = {};
+        let focusHoursAnalyticsOffset = 0;
+        let _focusHoursChartInstance = null;
         let _movePickerSession = null;
         let todayPointsState = { sessionPoints: 0, habitPoints: 0, totalPoints: 0 };
         let sessionEndSound = 'bellChime';
@@ -284,6 +287,12 @@ let selectedProjectColor = '#1967d2';
                 settings = normalizeSettings({});
             }
             weekOverrides = asObject(loadStoredJson('lifescore_weekoverrides_v4', {}));
+            const _rawFHS = loadStoredJson('lifescore_focus_schedule_v1', null);
+            if (_rawFHS && typeof _rawFHS === 'object' && !Array.isArray(_rawFHS)) {
+                focusHourSchedule = _rawFHS;
+            } else {
+                focusHourSchedule = { Sun: [], Mon: [], Tue: [], Wed: [], Thu: [], Fri: [], Sat: [] };
+            }
         }
 
         function normalizeSettings(parsed = {}) {
@@ -1694,8 +1703,8 @@ if (key === 'scoring') {
         datePicker.onchange = calculateScores;
     }
     setTimeout(() => {
-        _projProgressWeekOffset = 0;
-        renderWeeklyProjectProgress();
+        focusHoursAnalyticsOffset = 0;
+        renderFocusHoursAnalytics();
         calculateScores();
         updateChart();
         renderSessionAnalytics();
@@ -1859,6 +1868,146 @@ function renderWeeklyProjectProgress() {
     if (el) el.style.display = 'none';
 }
 
+// ========================================
+// FOCUS HOURS SCHEDULE
+// ========================================
+const FHS_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const FHS_DAY_LABELS = { Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday' };
+
+function openFocusHoursSchedule() {
+    renderFocusHoursSchedule();
+    document.getElementById('focusHoursScheduleModal').classList.add('active');
+}
+function closeFocusHoursScheduleModal() {
+    document.getElementById('focusHoursScheduleModal').classList.remove('active');
+}
+
+function renderFocusHoursSchedule() {
+    const body = document.getElementById('focusHoursScheduleBody');
+    if (!body) return;
+    body.innerHTML = FHS_DAYS.map(day => {
+        const blocks = focusHourSchedule[day] || [];
+        const blocksHtml = blocks.map((b, i) => `
+            <div style="display:flex; align-items:center; gap:8px; padding:5px 0; border-bottom:1px solid var(--border-color);">
+                <span style="font-size:13px; flex:1; color:var(--text-primary);">${b.startTime} – ${b.endTime}</span>
+                <span style="font-size:11px; color:var(--text-secondary);">${Math.round((timeToMin(b.endTime) - timeToMin(b.startTime)) / 60 * 10) / 10}h</span>
+                <button onclick="removeFocusHourBlock('${day}', ${i})" style="background:none; border:none; color:var(--text-secondary); cursor:pointer; font-size:15px; padding:2px 6px; line-height:1;" title="Remove">✕</button>
+            </div>`).join('');
+        return `
+        <div style="margin-bottom:14px; padding:12px; background:var(--bg-tertiary); border-radius:10px;">
+            <div style="font-weight:700; font-size:13px; margin-bottom:8px; color:var(--text-primary);">${FHS_DAY_LABELS[day]}</div>
+            <div id="fhs_blocks_${day}">${blocksHtml || '<div style="color:var(--text-secondary);font-size:12px;padding:2px 0 6px;">No blocks yet</div>'}</div>
+            <div style="display:flex; gap:6px; margin-top:10px; align-items:center; flex-wrap:wrap;">
+                <input type="time" id="fhs_start_${day}" value="09:00" style="padding:5px 8px; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-secondary); color:var(--text-primary); font-size:13px; flex:1; min-width:90px;">
+                <span style="color:var(--text-secondary); flex-shrink:0;">to</span>
+                <input type="time" id="fhs_end_${day}" value="10:00" style="padding:5px 8px; border:1px solid var(--border-color); border-radius:6px; background:var(--bg-secondary); color:var(--text-primary); font-size:13px; flex:1; min-width:90px;">
+                <button class="btn-primary" onclick="addFocusHourBlock('${day}')" style="padding:6px 12px; font-size:12px; white-space:nowrap; flex-shrink:0;">+ Add</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function addFocusHourBlock(day) {
+    const startEl = document.getElementById(`fhs_start_${day}`);
+    const endEl = document.getElementById(`fhs_end_${day}`);
+    if (!startEl || !endEl) return;
+    const startTime = startEl.value;
+    const endTime = endEl.value;
+    if (!startTime || !endTime) return alert('Please set both start and end times.');
+    if (timeToMin(endTime) <= timeToMin(startTime)) return alert('End time must be after start time.');
+    if (!focusHourSchedule[day]) focusHourSchedule[day] = [];
+    // Check for overlap with existing blocks
+    const newStart = timeToMin(startTime), newEnd = timeToMin(endTime);
+    const hasOverlap = focusHourSchedule[day].some(b => {
+        const bStart = timeToMin(b.startTime), bEnd = timeToMin(b.endTime);
+        return newStart < bEnd && newEnd > bStart;
+    });
+    if (hasOverlap) return alert('This block overlaps with an existing block on this day.');
+    focusHourSchedule[day].push({ startTime, endTime });
+    focusHourSchedule[day].sort((a, b) => a.startTime.localeCompare(b.startTime));
+    saveFocusHourSchedule();
+    renderFocusHoursSchedule();
+    renderTodayView();
+}
+
+function removeFocusHourBlock(day, index) {
+    if (!focusHourSchedule[day]) return;
+    focusHourSchedule[day].splice(index, 1);
+    saveFocusHourSchedule();
+    renderFocusHoursSchedule();
+    renderTodayView();
+}
+
+// ========================================
+// FOCUS HOURS ANALYTICS
+// ========================================
+function renderFocusHoursAnalytics() {
+    const section = document.getElementById('focusHoursAnalyticsSection');
+    if (!section) return;
+
+    const { weekStart, weekEnd } = getWeekBoundaryWithOffset(focusHoursAnalyticsOffset);
+    const fmt = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const weekLabelEl = document.getElementById('focusHoursWeekLabel');
+    if (weekLabelEl) weekLabelEl.textContent = `${fmt(weekStart)} – ${fmt(weekEnd)}`;
+    const nextBtn = document.getElementById('focusHoursWeekNext');
+    if (nextBtn) nextBtn.disabled = focusHoursAnalyticsOffset >= 0;
+
+    // Planned hours per day from schedule
+    const plannedByDay = {};
+    FHS_DAYS.forEach(day => {
+        const blocks = focusHourSchedule[day] || [];
+        plannedByDay[day] = blocks.reduce((sum, b) => sum + (timeToMin(b.endTime) - timeToMin(b.startTime)) / 60, 0);
+    });
+
+    // Completed hours per day from sessionLogs in this week
+    const completedByDay = {};
+    FHS_DAYS.forEach(d => { completedByDay[d] = 0; });
+    let totalFocusSum = 0, totalFocusCount = 0;
+    const weekStartTs = weekStart.getTime(), weekEndTs = weekEnd.getTime();
+    sessionLogs.forEach(s => {
+        if (!s.completed || !s.startTime || !s.endTime) return;
+        if (s.startTime < weekStartTs || s.startTime > weekEndTs) return;
+        const dayAbbr = DAY_ABBRS[new Date(s.startTime).getDay()]; // 'Sun','Mon',...
+        const hrs = (s.endTime - s.startTime) / 3600000;
+        completedByDay[dayAbbr] = (completedByDay[dayAbbr] || 0) + hrs;
+        if (s.focusQuality != null) { totalFocusSum += s.focusQuality; totalFocusCount++; }
+    });
+
+    const totalPlanned = FHS_DAYS.reduce((s, d) => s + plannedByDay[d], 0);
+    const totalCompleted = FHS_DAYS.reduce((s, d) => s + (completedByDay[d] || 0), 0);
+    const avgFocus = totalFocusCount > 0 ? (totalFocusSum / totalFocusCount).toFixed(2) : null;
+
+    const planEl = document.getElementById('fhaPlanHours');
+    const compEl = document.getElementById('fhaCompHours');
+    const focusEl = document.getElementById('fhaAvgFocus');
+    if (planEl) planEl.textContent = totalPlanned.toFixed(1) + 'h';
+    if (compEl) compEl.textContent = totalCompleted.toFixed(1) + 'h';
+    if (focusEl) focusEl.textContent = avgFocus ? avgFocus + '×' : '—';
+
+    const canvas = document.getElementById('focusHoursChart');
+    if (!canvas) return;
+    if (_focusHoursChartInstance) { _focusHoursChartInstance.destroy(); _focusHoursChartInstance = null; }
+    _focusHoursChartInstance = new Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+            labels: FHS_DAYS,
+            datasets: [
+                { label: 'Planned', data: FHS_DAYS.map(d => +(plannedByDay[d] || 0).toFixed(2)), backgroundColor: 'rgba(25,103,210,0.25)', borderColor: 'rgba(25,103,210,0.7)', borderWidth: 1 },
+                { label: 'Completed', data: FHS_DAYS.map(d => +(completedByDay[d] || 0).toFixed(2)), backgroundColor: 'rgba(16,185,129,0.5)', borderColor: 'rgba(16,185,129,0.9)', borderWidth: 1 }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: { y: { beginAtZero: true, ticks: { callback: v => v + 'h' } } },
+            plugins: {
+                legend: { position: 'bottom', labels: { boxWidth: 12, padding: 8, font: { size: 11 } } },
+                tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y}h` } }
+            }
+        }
+    });
+}
+
        function renderTodayView() {
     const today = new Date();
     const dateStr = getLocalDateStr(today, true);
@@ -2010,32 +2159,22 @@ function renderWeeklyProjectProgress() {
             const todayAbbr = DAY_ABBRS[displayDate.getDay()];
             const plan = getTodayPlan(dateStr);
 
-            // Build scheduled session blocks from projects, applying week overrides
+            // Build scheduled focus hour blocks from focusHourSchedule
             const scheduledBlocks = [];
-            const _weekKey = getISOWeekKey(new Date(dateStr + 'T12:00:00'));
-            const _wkMoved = (weekOverrides[_weekKey] || {}).moved || [];
-            projects.forEach(p => {
-                (p.scheduledSessions || []).forEach((s, idx) => {
-                    const ov = _wkMoved.find(m => m.projectId === p.id && m.originalDay === s.day && m.startTime === s.startTime && m.endTime === s.endTime);
-                    const showDay = ov ? ov.targetDay : s.day;
-                    if (showDay !== todayAbbr) return;
-                    expandTo60MinBlocks(s.startTime, s.endTime).forEach((block, bi) => {
-                        scheduledBlocks.push({ type: 'session', project: p, session: block, key: `s_${p.id}_${idx}_${bi}`, isMoved: !!ov, originalDay: s.day, sessStartTime: s.startTime, sessEndTime: s.endTime });
+            (focusHourSchedule[todayAbbr] || []).forEach((s, idx) => {
+                expandTo60MinBlocks(s.startTime, s.endTime).forEach((block, bi) => {
+                    scheduledBlocks.push({
+                        type: 'session',
+                        project: { id: null, name: 'Focus Hour', icon: '⏱', color: 'var(--accent-color)' },
+                        session: block,
+                        key: `fhs_${idx}_${bi}`,
+                        isMoved: false,
+                        originalDay: todayAbbr,
+                        sessStartTime: s.startTime,
+                        sessEndTime: s.endTime
                     });
                 });
             });
-
-            // Add plan one-off sessions
-            if (plan) {
-                (plan.oneOffSessions || []).forEach((s, idx) => {
-                    const p = projects.find(x => x.id === s.projectId);
-                    if (p) {
-                        expandTo60MinBlocks(s.startTime, s.endTime).forEach((block, bi) => {
-                            scheduledBlocks.push({ type: 'session', project: p, session: block, key: `oneoff_${idx}_${bi}`, isOneOff: true });
-                        });
-                    }
-                });
-            }
 
             // Build habit items
             const habitItems = todayHabits.map(h => ({ type: 'habit', habit: h, key: `h_${h.id}`, time: h.reminderTime || null }));
@@ -2229,7 +2368,7 @@ function renderWeeklyProjectProgress() {
                 const baseLabel = item.isOneOff ? 'one-off' : (item.isMoved ? `moved from ${origDay}` : 'scheduled');
                 const actedLabel = item._isMissed ? '✗ Logged missed' : '✓ Completed';
                 const metaLabel = (isActedOn ? actedLabel : baseLabel) + focusSuffix;
-                const moveBtn = item.isOneOff ? '' : `<button onclick="event.stopPropagation(); openMoveSessionPicker(${p.id},'${origDay || item.session.startTime}','${sessStart}','${sessEnd}')" style="background:none;border:none;font-size:11px;color:var(--accent-color);cursor:pointer;padding:0;white-space:nowrap;">→ Move</button>`;
+                const moveBtn = (item.isOneOff || p.id == null) ? '' : `<button onclick="event.stopPropagation(); openMoveSessionPicker(${p.id},'${origDay || item.session.startTime}','${sessStart}','${sessEnd}')" style="background:none;border:none;font-size:11px;color:var(--accent-color);cursor:pointer;padding:0;white-space:nowrap;">→ Move</button>`;
                 return `<div class="timeline-item timeline-item--session" style="cursor:default;" data-time="${s.startTime}" data-date="${dateStr}" data-project-id="${p.id}">
                     <div class="timeline-time">${s.startTime}–${s.endTime}</div>
                     <div class="timeline-icon" style="color:var(--accent-color);">⏱</div>
@@ -2437,15 +2576,11 @@ function renderWeeklyProjectProgress() {
                     if (h.period === 'weekly' || h.period === 'monthly') return false;
                     return (h.customDays || [0,1,2,3,4,5,6]).includes(jsDay);
                 }).sort((a, b) => (a.reminderTime || 'ZZ').localeCompare(b.reminderTime || 'ZZ'));
-                // Sessions for this day (with overrides applied, split into 60-min blocks)
+                // Sessions for this day from focusHourSchedule (split into 60-min blocks)
                 const daySessions = [];
-                projects.forEach(p => {
-                    (p.scheduledSessions || []).forEach((s) => {
-                        const ov = overrides.find(m => m.projectId === p.id && m.originalDay === s.day && m.startTime === s.startTime && m.endTime === s.endTime);
-                        if (ov ? ov.targetDay !== abbr : s.day !== abbr) return;
-                        expandTo60MinBlocks(s.startTime, s.endTime).forEach(block => {
-                            daySessions.push({ project: p, block, isMoved: !!ov, originalDay: s.day, sessStart: s.startTime, sessEnd: s.endTime });
-                        });
+                (focusHourSchedule[abbr] || []).forEach(s => {
+                    expandTo60MinBlocks(s.startTime, s.endTime).forEach(block => {
+                        daySessions.push({ block, sessStart: s.startTime, sessEnd: s.endTime });
                     });
                 });
                 daySessions.sort((a, b) => (a.block.startTime || '').localeCompare(b.block.startTime || ''));
@@ -2466,14 +2601,13 @@ function renderWeeklyProjectProgress() {
                         </div>`
                     });
                 });
-                daySessions.forEach(({ project: p, block, isMoved, originalDay, sessStart, sessEnd }) => {
+                daySessions.forEach(({ block }) => {
                     allItems.push({
                         sortKey: block.startTime,
                         html: `<div class="wt-item wt-item--session">
-                            <span>${p.icon || '📁'}</span>
-                            <span class="wt-name">${escapeHtml(p.name)}${isMoved ? ' <span class="wt-moved">↗</span>' : ''}</span>
+                            <span>⏱</span>
+                            <span class="wt-name">Focus Hour</span>
                             <span class="wt-time">${block.startTime}–${block.endTime}</span>
-                            <button class="wt-move-btn" onclick="openMoveSessionPicker(${p.id},'${originalDay}','${sessStart}','${sessEnd}')" title="Move">→</button>
                         </div>`
                     });
                 });
@@ -7072,6 +7206,9 @@ function saveWeightAdjustments() {}
         function saveProjects() {
             localStorage.setItem('lifescore_projects_v4', JSON.stringify(projects));
         }
+        function saveFocusHourSchedule() {
+            localStorage.setItem('lifescore_focus_schedule_v1', JSON.stringify(focusHourSchedule));
+        }
 
         // ── Project Registry ──────────────────────────────────────────────
         let _dragSrcProjectId = null;
@@ -7961,6 +8098,7 @@ const SYNC_KEYS = [
     'lifescore_world_v4',
     'lifescore_daily_session_overrides_v4',
     'lifescore_weekoverrides_v4',
+    'lifescore_focus_schedule_v1',
 ];
 
 let _cloudSyncTimer = null;

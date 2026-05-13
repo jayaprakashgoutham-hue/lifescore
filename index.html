@@ -151,8 +151,37 @@
         <div class="container" style="display: block;">
             <input type="date" id="scoreDatePicker" style="display:none;">
 
-            <!-- Project Hours Progress (top of analytics) -->
-            <div id="weeklyProjectProgress" class="today-section" style="margin-top:8px; display:none;"></div>
+            <!-- Project Hours Progress (hidden) -->
+            <div id="weeklyProjectProgress" style="display:none;"></div>
+
+            <!-- Focus Hours Analytics -->
+            <div class="today-section" id="focusHoursAnalyticsSection" style="margin-top:8px;">
+                <div class="today-section-header">
+                    <div class="today-section-title">⏱ Focus Hours This Week</div>
+                    <div style="display:flex; gap:4px; align-items:center;">
+                        <button class="btn-secondary" style="padding:4px 10px;font-size:15px;line-height:1;" onclick="focusHoursAnalyticsOffset--;renderFocusHoursAnalytics()">‹</button>
+                        <span id="focusHoursWeekLabel" style="font-size:12px;color:var(--text-secondary);white-space:nowrap;min-width:120px;text-align:center;"></span>
+                        <button class="btn-secondary" style="padding:4px 10px;font-size:15px;line-height:1;" id="focusHoursWeekNext" onclick="if(focusHoursAnalyticsOffset<0){focusHoursAnalyticsOffset++;renderFocusHoursAnalytics();}">›</button>
+                    </div>
+                </div>
+                <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:12px;">
+                    <div style="padding:10px; background:var(--bg-tertiary); border-radius:8px; text-align:center;">
+                        <div style="font-size:11px; color:var(--text-secondary); margin-bottom:2px;">Planned</div>
+                        <div style="font-size:20px; font-weight:700; color:var(--text-primary);" id="fhaPlanHours">0h</div>
+                    </div>
+                    <div style="padding:10px; background:var(--bg-tertiary); border-radius:8px; text-align:center;">
+                        <div style="font-size:11px; color:var(--text-secondary); margin-bottom:2px;">Completed</div>
+                        <div style="font-size:20px; font-weight:700; color:#10b981;" id="fhaCompHours">0h</div>
+                    </div>
+                    <div style="padding:10px; background:var(--bg-tertiary); border-radius:8px; text-align:center;">
+                        <div style="font-size:11px; color:var(--text-secondary); margin-bottom:2px;">Avg Focus</div>
+                        <div style="font-size:20px; font-weight:700; color:var(--text-primary);" id="fhaAvgFocus">—</div>
+                    </div>
+                </div>
+                <div class="chart-container" style="height:auto;">
+                    <canvas id="focusHoursChart" style="height:140px !important;"></canvas>
+                </div>
+            </div>
 
             <div class="today-section" style="margin-top:8px;">
                 <div style="font-weight:700; margin-bottom:10px;">Today's Breakdown</div>
@@ -794,6 +823,19 @@
             </div>
 
             <div class="settings-section">
+                <div class="settings-section-title">Focus Hours</div>
+                <div class="setting-item">
+                    <div>
+                        <div class="setting-label">Weekly Schedule</div>
+                        <div class="setting-description">Set recurring focus hour blocks for each day of the week.</div>
+                    </div>
+                    <div class="setting-control">
+                        <button class="btn-secondary" onclick="closeSettings(); openFocusHoursSchedule();">⏱ Schedule</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-section">
                 <div class="settings-section-title">Tools</div>
                 <div class="setting-item">
                     <div>
@@ -1423,6 +1465,18 @@
                     <button class="btn-primary" onclick="saveLogMissedSession()" style="flex:1;">Save</button>
                     <button class="btn-secondary" onclick="document.getElementById('logMissedModal').classList.remove('active')" style="flex:1;">Cancel</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Focus Hours Schedule Modal -->
+    <div class="modal" id="focusHoursScheduleModal">
+        <div class="modal-content" style="max-width: 480px;">
+            <div class="modal-header">⏱ Focus Hours Schedule</div>
+            <div style="font-size:13px; color:var(--text-secondary); margin-bottom:12px;">Set recurring focus blocks for each day. They appear in Today's timeline as Focus Hour cards.</div>
+            <div id="focusHoursScheduleBody" style="max-height: 62vh; overflow-y: auto; padding-right: 4px;"></div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeFocusHoursScheduleModal()">Close</button>
             </div>
         </div>
     </div>
