@@ -1875,8 +1875,8 @@ const FHS_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const FHS_DAY_LABELS = { Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday' };
 
 function openFocusHoursSchedule() {
-    renderFocusHoursSchedule();
     document.getElementById('focusHoursScheduleModal').classList.add('active');
+    renderFocusHoursSchedule();
 }
 function closeFocusHoursScheduleModal() {
     document.getElementById('focusHoursScheduleModal').classList.remove('active');
@@ -2202,31 +2202,12 @@ function renderFocusHoursAnalytics() {
                 scheduledItems.sort((a, b) => (a.time || '').localeCompare(b.time || ''));
             }
 
-            // Separate active vs completed/skipped/failed items (habits AND sessions)
-            function isItemActedOn(item) {
-                if (item.type === 'habit') {
-                    const log = habitLogs[item.habit.id]?.[dateStr];
-                    const state = getHabitLogState(log);
-                    return state === 'done' || state === 'skipped' || state === 'failed';
-                }
-                if (item.type === 'session') {
-                    const s = item.session;
-                    return sessionLogs.some(sl => {
-                        if (!sl.completed || !sl.startTime) return false;
-                        if (getLocalDateStr(new Date(sl.startTime), true) !== dateStr) return false;
-                        const sStartMins = new Date(sl.startTime).getHours() * 60 + new Date(sl.startTime).getMinutes();
-                        return sStartMins >= timeToMin(s.startTime) && sStartMins < timeToMin(s.endTime);
-                    });
-                }
-                return false;
-            }
-
-            const activeScheduled = scheduledItems.filter(i => !isItemActedOn(i));
-            const activeUnscheduled = unscheduledItems.filter(i => !isItemActedOn(i));
+            const activeScheduled = scheduledItems.filter(i => !isItemActedOn(i, dateStr));
+            const activeUnscheduled = unscheduledItems.filter(i => !isItemActedOn(i, dateStr));
 
             // Enrich completed session items with their matching session log (for focusQuality display)
             function enrichCompleted(items) {
-                return items.filter(i => isItemActedOn(i)).map(item => {
+                return items.filter(i => isItemActedOn(i, dateStr)).map(item => {
                     if (item.type !== 'session') return item;
                     const s = item.session;
                     const matchedLog = sessionLogs.find(sl => {
@@ -2310,6 +2291,24 @@ function renderFocusHoursAnalytics() {
             updateTimelineHighlights();
         }
 
+        function isItemActedOn(item, dateStr) {
+            if (item.type === 'habit') {
+                const log = habitLogs[item.habit.id]?.[dateStr];
+                const state = getHabitLogState(log);
+                return state === 'done' || state === 'skipped' || state === 'failed';
+            }
+            if (item.type === 'session') {
+                const s = item.session;
+                return sessionLogs.some(sl => {
+                    if (!sl.completed || !sl.startTime) return false;
+                    if (getLocalDateStr(new Date(sl.startTime), true) !== dateStr) return false;
+                    const sStartMins = new Date(sl.startTime).getHours() * 60 + new Date(sl.startTime).getMinutes();
+                    return sStartMins >= timeToMin(s.startTime) && sStartMins < timeToMin(s.endTime);
+                });
+            }
+            return false;
+        }
+
         function renderTimelineItem(item, dateStr) {
             if (item.type === 'break') {
                 const dur = item.durationMin >= 60
@@ -2364,7 +2363,7 @@ function renderFocusHoursAnalytics() {
                 const sessEnd = item.sessEndTime || s.endTime;
                 const movedBadge = item.isMoved ? `<span class="session-moved-badge">↗ Moved</span>` : '';
                 const focusSuffix = item._focusQuality != null ? ` · Focus: ${item._focusQuality}×` : '';
-                const isActedOn = isItemActedOn(item);
+                const isActedOn = isItemActedOn(item, dateStr);
                 const baseLabel = item.isOneOff ? 'one-off' : (item.isMoved ? `moved from ${origDay}` : 'scheduled');
                 const actedLabel = item._isMissed ? '✗ Logged missed' : '✓ Completed';
                 const metaLabel = (isActedOn ? actedLabel : baseLabel) + focusSuffix;
