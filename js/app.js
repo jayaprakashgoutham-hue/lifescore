@@ -828,8 +828,6 @@ function refreshTotalXPDisplay() {
         let _logMissedProjectId = null, _logMissedStart = null, _logMissedEnd = null, _logMissedMaxH = 1;
 
         function openLogMissedModal(projectId, startTimeStr, endTimeStr) {
-            const project = projects.find(p => p.id === projectId);
-            if (!project) return;
             const [sh, sm] = startTimeStr.split(':').map(Number);
             const [eh, em] = endTimeStr.split(':').map(Number);
             const durMins = (eh * 60 + em) - (sh * 60 + sm);
@@ -839,12 +837,6 @@ function refreshTotalXPDisplay() {
             _logMissedMaxH = durMins / 60;
             const timeEl = document.getElementById('logMissedTimeInfo');
             if (timeEl) timeEl.textContent = `${startTimeStr}–${endTimeStr} (${durMins} min)`;
-            const selectEl = document.getElementById('logMissedProjectSelect');
-            if (selectEl) {
-                selectEl.innerHTML = projects.map(p =>
-                    `<option value="${p.id}"${p.id === projectId ? ' selected' : ''}>${escapeHtml(p.name)}</option>`
-                ).join('');
-            }
             const hoursEl = document.getElementById('logMissedHours');
             if (hoursEl) { hoursEl.value = (durMins / 60).toFixed(2); hoursEl.max = _logMissedMaxH; }
             const noteEl = document.getElementById('logMissedNote');
@@ -857,22 +849,19 @@ function refreshTotalXPDisplay() {
             const noteEl = document.getElementById('logMissedNote');
             const hours = parseFloat(hoursEl?.value);
             if (hours == null || isNaN(hours) || hours < 0) return alert('Please enter a valid number of hours');
-            const selectEl = document.getElementById('logMissedProjectSelect');
-            const projectId = selectEl && selectEl.value ? parseInt(selectEl.value) : _logMissedProjectId;
-            const project = projects.find(p => p.id === projectId);
-            if (!project) return;
             const focusQuality = parseFloat(document.getElementById('logMissedFocusQuality')?.value || '0.8');
             const [sh, sm] = _logMissedStart.split(':').map(Number);
             const todayStr = getLocalDateStr(new Date(), true);
             const startTs = new Date(todayStr + 'T00:00:00').getTime() + (sh * 60 + sm) * 60000;
             const workedMin = Math.round(hours * 60);
             const endTs = startTs + workedMin * 60000;
+            const note = noteEl?.value.trim() || '';
             const session = {
                 id: Date.now(), date: todayStr,
-                projectId: project.id, projectName: project.name,
+                projectId: null, projectName: note || 'Focus Session',
                 duration: workedMin, startTime: startTs, endTime: endTs,
                 stopwatch: false, activeTasks: [], tasksCompleted: [],
-                notes: noteEl?.value.trim() || '',
+                notes: note,
                 completed: true, interrupted: false, source: 'manual',
                 focusQuality, xpMultiplier: focusQuality
             };
@@ -892,17 +881,10 @@ function refreshTotalXPDisplay() {
         }
 
         function openStartSessionModal() {
-    const projectSelect = document.getElementById('sessionProjectSelect');
-    const noMsg = document.getElementById('sessionNoProjectsMsg');
-    const startBtn = document.getElementById('startSessionBtn');
-    const hasProjects = projects.length > 0;
-    projectSelect.innerHTML = '<option value="">Select project</option>' +
-        projects.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
-    projectSelect.style.display = hasProjects ? '' : 'none';
-    if (noMsg) noMsg.style.display = hasProjects ? 'none' : '';
-    if (startBtn) startBtn.style.display = hasProjects ? '' : 'none';
     selectedSessionDuration = 60;
     selectSessionDuration(60);
+    const labelInput = document.getElementById('sessionLabelInput');
+    if (labelInput) labelInput.value = '';
     document.getElementById('startSessionModal').classList.add('active');
 }
 
@@ -926,17 +908,11 @@ function refreshTotalXPDisplay() {
 }
 function openLogPastSessionModal() {
     const modal = document.getElementById('logPastSessionModal');
-    const projectSelect = document.getElementById('pastSessionProjectSelect');
-    projectSelect.innerHTML = '<option value="">Select Project...</option>' +
-        projects.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
-    
-    // Set default to 1 hour ago
     const now = new Date();
     const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
     document.getElementById('pastSessionStartTime').value = oneHourAgo.toISOString().slice(0, 16);
     document.getElementById('pastSessionDuration').value = '60';
     document.getElementById('pastSessionNotes').value = '';
-    
     modal.classList.add('active');
 }
 
@@ -1077,15 +1053,10 @@ function deleteSession() {
 }
 
 function savePastSession() {
-    const projectId = parseInt(document.getElementById('pastSessionProjectSelect').value);
     const duration = parseInt(document.getElementById('pastSessionDuration').value);
     const startTimeStr = document.getElementById('pastSessionStartTime').value;
     const notes = document.getElementById('pastSessionNotes').value.trim();
-    
-    if (!projectId) {
-        alert('Please select a project.');
-        return;
-    }
+
     if (!duration || duration < 1) {
         alert('Please enter a valid duration.');
         return;
@@ -1094,23 +1065,17 @@ function savePastSession() {
         alert('Please select a start time.');
         return;
     }
-    
-    const project = projects.find(p => p.id === projectId);
-    if (!project) {
-        alert('Selected project not found.');
-        return;
-    }
-    
+
     const startTime = new Date(startTimeStr).getTime();
     const endTime = startTime + (duration * 60 * 1000);
     const dateStr = getLocalDateStr(new Date(startTime), true);
-    
+
     const focusQuality = parseFloat(document.getElementById('pastSessionFocusQuality')?.value || '0.8');
     const session = {
         id: startTime,
         date: dateStr,
-        projectId: project.id,
-        projectName: project.name,
+        projectId: null,
+        projectName: notes || 'Focus Session',
         duration: duration,
         startTime: startTime,
         endTime: endTime,
