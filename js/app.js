@@ -2741,7 +2741,7 @@ function renderFocusHoursAnalytics() {
                         content.style.transition = 'transform 0.22s ease';
                         content.style.transform = 'translateX(110%)';
                         setTimeout(() => {
-                            const habit = habits.find(h => h.id === habitId);
+                            const habit = habits.find(h => String(h.id) === String(habitId));
                             if (habit && !isMeasurable) {
                                 _executeHabitDone(habit, dateStr, false);
                             } else if (habit) {
@@ -3383,6 +3383,8 @@ function renderFocusHoursAnalytics() {
 
             if (habit.measurable && habit.period === 'weekly') {
                 // Weekly measurable habits: use the same +/− modal as the Habits tab
+                // Force current week (offset 0) — user is always logging for today from the Today tab
+                currentWeekOffset = 0;
                 incrementWeeklyHabit(habitId);
                 return;
             } else if (habit.measurable) {
@@ -5186,12 +5188,6 @@ function adjustWeeklyHabit(change) {
         completed: newValue > 0,
         timestamp: new Date().toISOString()
     };
-    habitLogs[currentWeeklyHabitId][today] = {
-        state: newValue > 0 ? 'done' : 'blank',
-        value: newValue,
-        completed: newValue > 0,
-        timestamp: new Date().toISOString()
-    };
     console.log('Saved new value:', newValue, 'Log:', habitLogs[currentWeeklyHabitId][today]);
 
     saveHabitLogs();
@@ -5218,6 +5214,16 @@ function adjustWeeklyHabit(change) {
 
 function closeWeeklyHabitModal() {
     document.getElementById('weeklyHabitModal').classList.remove('active');
+}
+
+function skipWeeklyHabitToday() {
+    if (!currentWeeklyHabitId) return;
+    const today = getLocalDateStr(new Date(), true);
+    setHabitLogState(currentWeeklyHabitId, today, 'skipped', 0);
+    saveHabitLogs();
+    closeWeeklyHabitModal();
+    renderTodayView();
+    renderHabitLog();
 }
         function saveHabitValue() {
             const value = parseFloat(document.getElementById('habitValueInput').value) || 0;

@@ -1174,11 +1174,13 @@
             </div>
         </div>
         
-        <div style="display: flex; gap: 12px; margin-bottom: 24px;">
+        <div style="display: flex; gap: 12px; margin-bottom: 16px;">
             <button class="btn-secondary" style="flex: 1; font-size: 24px; padding: 16px;" onclick="adjustWeeklyHabit(-1)">− 1</button>
             <button class="btn-primary" style="flex: 1; font-size: 24px; padding: 16px;" onclick="adjustWeeklyHabit(1)">+ 1</button>
         </div>
-        
+
+        <button onclick="skipWeeklyHabitToday()" style="width:100%; padding:10px; background:none; border:1px solid var(--border-color); border-radius:8px; font-size:14px; color:var(--text-secondary); cursor:pointer; margin-bottom:16px; touch-action:manipulation;">— Skip Today</button>
+
         <div class="modal-footer">
             <button class="btn-secondary" onclick="closeWeeklyHabitModal()">Done</button>
         </div>
@@ -1498,9 +1500,9 @@
     <!-- Weekly Template Modal -->
     <div class="modal" id="weeklyTemplateModal">
         <div class="modal-content" style="max-width:960px; width:96%; max-height:90vh; overflow:hidden; display:flex; flex-direction:column;">
-            <div class="modal-header" style="display:flex; align-items:center; justify-content:space-between; flex-shrink:0;">
+            <div class="modal-header" style="display:flex; align-items:center; justify-content:space-between; flex-shrink:0; position:sticky; top:0; z-index:10; background:var(--bg-secondary); padding:16px 20px; margin-bottom:0;">
                 <span>📅 Weekly Template</span>
-                <button onclick="closeWeeklyTemplate()" style="background:none; border:none; font-size:20px; cursor:pointer; color:var(--text-secondary); line-height:1;">✕</button>
+                <button onclick="closeWeeklyTemplate()" style="background:none; border:none; font-size:22px; cursor:pointer; color:var(--text-secondary); line-height:1; min-width:44px; min-height:44px; display:flex; align-items:center; justify-content:flex-end; padding:0; touch-action:manipulation;">✕</button>
             </div>
             <div id="weeklyTemplateGrid" class="weekly-template-grid"></div>
         </div>

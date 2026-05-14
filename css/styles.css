@@ -1250,9 +1250,7 @@
         .habit-name-text {
             flex: 1;
             min-width: 0;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            word-break: break-word;
         }
 
         .habit-filter-menu {
@@ -3320,7 +3318,7 @@
     }
     .mobile-habit-card-name {
         flex: 1; font-size: 14px; font-weight: 600;
-        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        word-break: break-word;
     }
     .mobile-habit-today-status {
         width: 34px; height: 34px; border-radius: 8px; flex-shrink: 0;
